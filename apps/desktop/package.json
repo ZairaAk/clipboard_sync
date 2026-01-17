@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build:ts": "tsc -p tsconfig.json",
+    "build:ts": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json",
     "build:assets": "node scripts/copy-assets.js",
     "build": "pnpm run build:ts && pnpm run build:assets",
     "dev": "pnpm run build && electron .",
@@ -13,11 +13,12 @@
   "dependencies": {
     "@universal-clipboard/protocol": "workspace:*",
     "electron": "32.2.0",
+    "sqlite3": "5.1.7",
     "ws": "8.18.0"
   },
   "devDependencies": {
     "@types/node": "20.14.9",
-    "@types/ws": "8.5.10",
+    "@types/sqlite3": "3.1.11",
     "typescript": "5.5.4"
   }
 }

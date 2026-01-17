@@ -36,3 +36,18 @@
 
 ### Known limitations
 - WebRTC connectivity is validated with mocked signaling in tests.
+
+## Phase 3 - Clipboard text sync + SQLite history
+
+### Automated
+- `pnpm -C apps/desktop test`
+
+### Manual
+- Run server: `pnpm -C packages/server dev`
+- Run desktop: `pnpm -C apps/desktop dev`
+- Use “Create Pair Code” on device A and “Join Pair” on device B
+- Copy text A → paste on B
+- Verify history list shows one entry, and duplicate copy updates lastSeen (no duplicates)
+
+### Known limitations
+- Full multi-device clipboard sync depends on WebRTC transport wiring.

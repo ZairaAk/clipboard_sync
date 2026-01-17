@@ -1,69 +1,31 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-export type ConnectionState = {
-  wsStatus: "disconnected" | "connecting" | "connected";
-  pairCode: string | null;
-  pairedPeerId: string | null;
-};
-
-// Expose a secure API for renderer to communicate with main process.
+// Expose a minimal API for renderer diagnostics + history access.
 contextBridge.exposeInMainWorld("uc", {
   platform: process.platform,
-
-  // Connection management
-  connect: (config: { serverUrl: string; deviceId: string }) =>
-    ipcRenderer.invoke("uc:connect", config),
-  disconnect: () => ipcRenderer.invoke("uc:disconnect"),
-  getConnectionState: (): Promise<ConnectionState> =>
-    ipcRenderer.invoke("uc:getConnectionState"),
-
-  // Pairing
-  pairCreate: () => ipcRenderer.invoke("uc:pairCreate"),
-  pairJoin: (code: string) => ipcRenderer.invoke("uc:pairJoin", code),
-
-  // Signaling
-  sendSignal: (to: string, payload: { kind: string; data: unknown }) =>
-    ipcRenderer.invoke("uc:sendSignal", to, payload),
-
-  // ICE servers for WebRTC
-  getIceServers: (): Promise<RTCIceServer[]> =>
-    ipcRenderer.invoke("uc:getIceServers"),
-
-  // Event listeners
-  onWsStatus: (callback: (status: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, status: string) =>
-      callback(status);
-    ipcRenderer.on("uc:wsStatus", handler);
-    return () => ipcRenderer.removeListener("uc:wsStatus", handler);
+  history: {
+    list: () => ipcRenderer.invoke("history:list"),
+    get: (id: string) => ipcRenderer.invoke("history:get", id),
+    onUpdated: (callback: () => void) => {
+      ipcRenderer.on("history:updated", callback);
+      return () => ipcRenderer.removeListener("history:updated", callback);
+    },
   },
-  onDevicesUpdate: (callback: (msg: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: unknown) =>
-      callback(msg);
-    ipcRenderer.on("uc:devicesUpdate", handler);
-    return () => ipcRenderer.removeListener("uc:devicesUpdate", handler);
+  identity: {
+    get: () => ipcRenderer.invoke("identity:get"),
   },
-  onPairCreated: (callback: (msg: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: unknown) =>
-      callback(msg);
-    ipcRenderer.on("uc:pairCreated", handler);
-    return () => ipcRenderer.removeListener("uc:pairCreated", handler);
+  config: {
+    getIceServers: () => ipcRenderer.invoke("config:ice"),
+    wsUrl: process.env.UC_WS_URL ?? "ws://localhost:8787",
   },
-  onPairPaired: (callback: (msg: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: unknown) =>
-      callback(msg);
-    ipcRenderer.on("uc:pairPaired", handler);
-    return () => ipcRenderer.removeListener("uc:pairPaired", handler);
-  },
-  onSignal: (callback: (msg: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: unknown) =>
-      callback(msg);
-    ipcRenderer.on("uc:signal", handler);
-    return () => ipcRenderer.removeListener("uc:signal", handler);
-  },
-  onError: (callback: (msg: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: unknown) =>
-      callback(msg);
-    ipcRenderer.on("uc:error", handler);
-    return () => ipcRenderer.removeListener("uc:error", handler);
+  transport: {
+    onSend: (callback: (payload: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        callback(payload);
+      };
+      ipcRenderer.on("transport:send", handler);
+      return () => ipcRenderer.removeListener("transport:send", handler);
+    },
+    sendToMain: (payload: unknown) => ipcRenderer.send("transport:receive", payload),
   },
 });
