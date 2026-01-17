@@ -163,12 +163,21 @@ universal-clipboard/
   "nonce": "base64",
   "ciphertext": "base64"
 }
+
+**Encryption:**
+
+* No app-level payload encryption required in MVP (DTLS only).
+
+**Text payload encoding (MVP):**
+
+* For `mime: "text/plain"`, set `ciphertext` to base64 of UTF-8 text.
+* `nonce` remains a base64 random string (unused in MVP).
 ```
 
 ### 3.3 Loop Prevention Rules (Mandatory)
 
 * Drop if `originDeviceId == self`.
-* Drop if `eventId` already seen (LRU cache).
+* Drop if `eventId` already seen (LRU cache, size 2000).
 * Suppress local clipboard watcher for **500ms** after applying remote clip.
 
 ---
@@ -326,6 +335,7 @@ universal-clipboard/
 
 * Clipboard watcher (poll 300ms)
 * Apply remote text to OS clipboard
+* SQLite-backed history storage (persistent)
 * Loop prevention:
 
   * suppress watcher for 500ms after apply
@@ -447,8 +457,7 @@ Dedupe key: `mime + contentHash`
 
 Storage:
 
-* In-memory for MVP (live-only)
-* Optional persistence later (not in MVP)
+* SQLite persistence (MVP): `${userData}/history.sqlite`
 
 ---
 

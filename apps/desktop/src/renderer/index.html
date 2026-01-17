@@ -7,6 +7,23 @@
   <body>
     <h1>Universal Clipboard</h1>
     <p id="status">Desktop app ready.</p>
+    <section>
+      <h2>Connection</h2>
+      <div id="connection-status">Disconnected</div>
+      <div>
+        <button id="pair-create">Create Pair Code</button>
+        <span id="pair-code"></span>
+      </div>
+      <div>
+        <input id="pair-join-code" placeholder="Enter 6-digit code" />
+        <button id="pair-join">Join Pair</button>
+      </div>
+      <div id="pair-error"></div>
+    </section>
+    <section>
+      <h2>History</h2>
+      <ul id="history-list"></ul>
+    </section>
     <script src="renderer.js"></script>
   </body>
 </html>

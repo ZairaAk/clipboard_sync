@@ -41,6 +41,8 @@ universal-clipboard/
 - P2P DataChannel payload message:
   - `clip_event` with `eventId`, `originDeviceId`, `timestampMs`, `mime`, `nonce`, `ciphertext`.
 - `clip_event` is the **only** P2P top-level message type in protocol.
+- No app-level payload encryption required in MVP (DTLS only).
+- Text encoding (MVP): for `mime: "text/plain"`, `ciphertext` is base64 of UTF-8 text; `nonce` is random base64 (unused).
 - Chunking (`meta`/`chunk`/`done`) is a JSON payload that is:
   - `JSON.stringify` → encrypted → stored in `clip_event.ciphertext`.
   - On receive: decrypt → `JSON.parse` → handle by `kind`.
@@ -77,7 +79,7 @@ universal-clipboard/
 - `clip_event.mime` remains the real content type and is used for history/display/routing.
 - Loop prevention:
   - Drop if `originDeviceId == self`.
-  - Drop if `eventId` already seen (LRU).
+  - Drop if `eventId` already seen (LRU size 2000).
   - Suppress local watcher for 500ms after applying remote clip.
 
 ## MVP scope
@@ -106,7 +108,7 @@ universal-clipboard/
   - `mime` = detected mime, else `application/octet-stream`.
   - filename is metadata only (not part of dedupe).
   - If same `mime + contentHash` appears with a different name: update `lastSeen` and optionally update display name to most recent name (or keep a short list of recent names), but do not create a duplicate.
-- Storage: in-memory for MVP (no persistence).
+- Storage: SQLite at `${userData}/history.sqlite`.
 
 ## Chunking + integrity
 - Constants: `CHUNK_SIZE_BYTES = 65536`, `MAX_TRANSFER_BYTES` default 50MB.

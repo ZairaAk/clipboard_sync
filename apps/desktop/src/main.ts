@@ -1,6 +1,10 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
+import os from "node:os";
 import { ensureIdentity } from "./identity";
+import { HistoryStore } from "./clipboard/historyStore";
+import { ClipboardSyncEngine } from "./clipboard/syncEngine";
+import { resolveIceServers } from "./config/ice";
 
 // Create the main window with secure defaults (no remote, isolation on).
 function createMainWindow() {
@@ -15,17 +19,60 @@ function createMainWindow() {
 
   const rendererPath = path.join(__dirname, "renderer", "index.html");
   window.loadFile(rendererPath);
+  return window;
 }
 
 app.whenReady().then(() => {
   // Ensure the device identity is created before UI starts.
-  ensureIdentity(app.getPath("userData"));
-  createMainWindow();
+  const identity = ensureIdentity(app.getPath("userData"));
+  const mainWindow = createMainWindow();
+
+  const historyStore = new HistoryStore(app.getPath("userData"));
+
+  const clipboardSync = new ClipboardSyncEngine({
+    deviceId: identity.deviceId,
+    history: historyStore,
+    transport: {
+      send: (event) => {
+        // Forward outgoing clip events to the renderer transport.
+        mainWindow.webContents.send("transport:send", event);
+      },
+    },
+  });
+
+  clipboardSync.start();
+
+  ipcMain.handle("history:list", () => historyStore.list());
+  ipcMain.handle("history:get", (_event, id: string) => historyStore.getById(id));
+  ipcMain.handle("identity:get", () => ({
+    deviceId: identity.deviceId,
+    deviceName: os.hostname(),
+    platform: process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux",
+    publicKey: identity.publicKey,
+  }));
+  ipcMain.handle("config:ice", () =>
+    resolveIceServers({ env: process.env, userDataDir: app.getPath("userData") }),
+  );
+
+  ipcMain.on("transport:receive", (_event, clipEvent) => {
+    clipboardSync.handleRemoteEvent(clipEvent);
+  });
+
+  const notifyHistoryUpdated = () => {
+    mainWindow.webContents.send("history:updated");
+  };
+
+  clipboardSync.onHistoryUpdated = notifyHistoryUpdated;
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createMainWindow();
     }
+  });
+
+  app.on("before-quit", () => {
+    clipboardSync.stop();
+    historyStore.close();
   });
 });
 
