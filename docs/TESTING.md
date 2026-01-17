@@ -23,3 +23,16 @@
 
 ### Known limitations
 - Presence, pairing, and signaling are in-memory only (no persistence).
+
+## Phase 2 - Desktop WebRTC state machine
+
+### Automated
+- `pnpm -C apps/desktop test`
+
+### Manual
+- Run server: `pnpm -C packages/server dev`
+- Run desktop: `pnpm -C apps/desktop dev`
+- Pair using a code and confirm the UI shows connected (when Phase 2 UI is wired).
+
+### Known limitations
+- WebRTC connectivity is validated with mocked signaling in tests.
