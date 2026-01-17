@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build:ts": "tsc -p tsconfig.json",
+    "build:ts": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json",
     "build:assets": "node scripts/copy-assets.js",
     "build": "pnpm run build:ts && pnpm run build:assets",
     "dev": "pnpm run build && electron .",

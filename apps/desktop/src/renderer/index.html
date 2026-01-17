@@ -2,6 +2,10 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:8787 ws://127.0.0.1:8787;"
+    />
     <title>Universal Clipboard</title>
   </head>
   <body>
@@ -24,6 +28,6 @@
       <h2>History</h2>
       <ul id="history-list"></ul>
     </section>
-    <script src="renderer.js"></script>
+    <script type="module" src="renderer.js"></script>
   </body>
 </html>
