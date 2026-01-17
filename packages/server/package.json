@@ -1,0 +1,21 @@
+{
+  "name": "@universal-clipboard/server",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "pnpm run build && node dist/src/index.js",
+    "test": "pnpm run build && node --test test/**/*.test.js"
+  },
+  "dependencies": {
+    "@universal-clipboard/protocol": "workspace:*",
+    "ws": "8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.9",
+    "@types/ws": "8.5.12",
+    "typescript": "5.5.4"
+  }
+}
