@@ -23,6 +23,9 @@ importers:
       '@types/node':
         specifier: 20.14.9
         version: 20.14.9
+      '@types/ws':
+        specifier: 8.5.10
+        version: 8.5.10
       typescript:
         specifier: 5.5.4
         version: 5.5.4
@@ -87,6 +90,9 @@ packages:
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
+
+  '@types/ws@8.5.10':
+    resolution: {integrity: sha512-vmQSUcfalpIq0R9q7uTo2lXs6eGIpt9wtnLdMv9LVpIjCA/+ufZRozlVoVelIYixx1ugCBKDhn89vnsEGOCx9A==}
 
   '@types/ws@8.5.12':
     resolution: {integrity: sha512-3tPRkv1EtkDpzlgyKyI8pGsGZAGPEaXeu0DOj5DI25Ja91bdAYddYHbADRYVrZMRbfW+1l5YwXVDKohDJNQxkQ==}
@@ -382,6 +388,10 @@ snapshots:
       undici-types: 5.26.5
 
   '@types/responselike@1.0.3':
+    dependencies:
+      '@types/node': 20.14.9
+
+  '@types/ws@8.5.10':
     dependencies:
       '@types/node': 20.14.9
 
