@@ -83,7 +83,7 @@ universal-clipboard/
 ## MVP scope
 - Desktop-only real-time clipboard sync (at least 2 desktop OS).
 - Secure transport via WebRTC DTLS; TURN required.
-- Clipboard content types: `text/plain`, images (PNG), files, videos as files.
+- Clipboard content types: `text/plain`, images (PNG), files.
 - Pairing codes required; clipboard history with no duplicates.
 - Explicitly not in MVP: offline queue, mesh, cloud storage/relay of clipboard content.
 - No clipboard payload over WebSocket; DataChannel only.
