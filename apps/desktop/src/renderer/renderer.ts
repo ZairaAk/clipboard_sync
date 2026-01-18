@@ -675,6 +675,12 @@
       } else if (msg.type === "clip_event") {
         console.log("[Renderer] Received clipboard event");
         uc.transportReceive(msg);
+      } else if (msg.type === "clip_start") {
+        console.log("[Renderer] Received clip_start for image transfer");
+        uc.transportReceive(msg);
+      } else if (msg.type === "clip_chunk") {
+        console.log(`[Renderer] Received clip_chunk ${msg.chunkIndex + 1}/${msg.totalChunks}`);
+        uc.transportReceive(msg);
       } else if (msg.type === "unpair") {
         console.log("[Renderer] Received unpair request from peer");
         unpairDevice(false); // Don't notify back to avoid loop
