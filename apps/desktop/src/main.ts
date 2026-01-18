@@ -5,6 +5,7 @@ import { ensureIdentity } from "./identity";
 import { HistoryStore } from "./clipboard/historyStore";
 import { ClipboardSyncEngine } from "./clipboard/syncEngine";
 import { resolveIceServers } from "./config/ice";
+import { initializeIpcHandlers } from "./ipc/handlers";
 
 // Create the main window with secure defaults (no remote, isolation on).
 function createMainWindow() {
@@ -26,6 +27,9 @@ app.whenReady().then(() => {
   // Ensure the device identity is created before UI starts.
   const identity = ensureIdentity(app.getPath("userData"));
   const mainWindow = createMainWindow();
+
+  // Initialize IPC handlers for WebSocket, pairing, signaling
+  initializeIpcHandlers(mainWindow);
 
   const historyStore = new HistoryStore(app.getPath("userData"));
 
