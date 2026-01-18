@@ -24,6 +24,14 @@
     source: "local" | "remote";
     originDeviceId: string;
     contentText: string;
+    contentBlob: string | null; // base64
+    thumbnailBlob: string | null; // base64
+  }
+
+  interface BlobData {
+    mime: string;
+    contentBlob: string | null;
+    thumbnailBlob: string | null;
   }
 
   interface Identity {
@@ -41,6 +49,7 @@
     forgetDevice: (deviceId: string) => Promise<{ success: boolean }>;
     getHistory: () => Promise<HistoryItem[]>;
     getHistoryItem: (id: string) => Promise<HistoryItem | null>;
+    getHistoryItemBlob: (id: string) => Promise<BlobData | null>;
     deleteHistoryItem: (id: string) => Promise<{ success: boolean }>;
     onHistoryUpdated: (callback: () => void) => () => void;
     connect: (config: { serverUrl: string; deviceId: string }) => Promise<{ success: boolean }>;
@@ -344,24 +353,37 @@
 
       historyList.innerHTML = items.map((item) => {
         const isExpanded = expandedHistoryId === item.id;
-        const typeIcon = item.mime.startsWith("image/") ? "🖼️" : item.mime === "application/octet-stream" ? "📁" : "📝";
-        const typeLabel = item.mime.startsWith("image/") ? "image" : item.mime === "application/octet-stream" ? "file" : "text";
+        const isImage = item.mime.startsWith("image/");
+        const typeIcon = isImage ? "🖼️" : item.mime === "application/octet-stream" ? "📁" : "📝";
+        const typeLabel = isImage ? "image" : item.mime === "application/octet-stream" ? "file" : "text";
         const sourceName = item.originDeviceId === deviceId ? "You" : (deviceMap.get(item.originDeviceId) || "Device " + item.originDeviceId.slice(0, 8));
 
+        // For images, show thumbnail; for text, show preview
+        const previewContent = isImage
+          ? `<div class="history-thumbnail" data-id="${item.id}"></div>`
+          : `<div class="history-preview">${escapeHtml(item.preview || "").slice(0, 100)}</div>`;
+
+        const fullContent = isImage
+          ? `<div class="history-full-image" data-id="${item.id}"></div>`
+          : `<div class="history-full-content">${escapeHtml(item.contentText || item.preview || "")}</div>`;
+
         return `
-        <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${item.id}">
+        <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${item.id}" data-mime="${item.mime}">
           <div class="history-type-icon">${typeIcon}</div>
           <div class="history-content">
-            <div class="history-preview">${escapeHtml(item.preview || "").slice(0, 100)}</div>
-            <div class="history-full-content">${escapeHtml(item.contentText || item.preview || "")}</div>
+            ${previewContent}
+            ${fullContent}
             <div class="history-meta">${formatTime(item.lastSeen)} · ${sourceName} · ${typeLabel}</div>
           </div>
           <div class="history-actions" onclick="event.stopPropagation()">
-            <button class="small secondary copy-btn" data-id="${item.id}">Copy</button>
+            <button class="small secondary copy-btn" data-id="${item.id}" data-mime="${item.mime}">Copy</button>
             <button class="small danger delete-btn" data-id="${item.id}">🗑️</button>
           </div>
         </div>
       `}).join("");
+
+      // Load thumbnails for image items
+      loadImageThumbnails(historyList);
 
       // Add click handlers for expand/collapse
       historyList.querySelectorAll(".history-item").forEach((itemEl) => {
@@ -389,16 +411,39 @@
       historyList.querySelectorAll(".copy-btn").forEach((btn) => {
         btn.addEventListener("click", async (e) => {
           e.stopPropagation();
-          const id = (e.target as HTMLElement).getAttribute("data-id");
-          if (id) {
-            const item = await uc.getHistoryItem(id);
-            if (item && (item.contentText || item.preview)) {
-              await navigator.clipboard.writeText(item.contentText || item.preview);
-              (e.target as HTMLButtonElement).textContent = "Copied!";
-              setTimeout(() => {
-                (e.target as HTMLButtonElement).textContent = "Copy";
-              }, 1500);
+          const target = e.target as HTMLElement;
+          const id = target.getAttribute("data-id");
+          const mime = target.getAttribute("data-mime");
+          if (!id) return;
+
+          try {
+            if (mime?.startsWith("image/")) {
+              // Copy image to clipboard
+              const blob = await uc.getHistoryItemBlob(id);
+              if (blob?.contentBlob) {
+                const bytes = Uint8Array.from(atob(blob.contentBlob), c => c.charCodeAt(0));
+                const imageBlob = new Blob([bytes], { type: blob.mime });
+                await navigator.clipboard.write([
+                  new ClipboardItem({ [blob.mime]: imageBlob })
+                ]);
+                (target as HTMLButtonElement).textContent = "Copied!";
+                setTimeout(() => {
+                  (target as HTMLButtonElement).textContent = "Copy";
+                }, 1500);
+              }
+            } else {
+              // Copy text to clipboard
+              const item = await uc.getHistoryItem(id);
+              if (item && (item.contentText || item.preview)) {
+                await navigator.clipboard.writeText(item.contentText || item.preview);
+                (target as HTMLButtonElement).textContent = "Copied!";
+                setTimeout(() => {
+                  (target as HTMLButtonElement).textContent = "Copy";
+                }, 1500);
+              }
             }
+          } catch (err) {
+            console.error("[Renderer] Failed to copy:", err);
           }
         });
       });
@@ -436,6 +481,48 @@
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function loadImageThumbnails(container: HTMLElement): Promise<void> {
+    // Load thumbnails
+    const thumbnailEls = container.querySelectorAll(".history-thumbnail");
+    for (const el of thumbnailEls) {
+      const id = el.getAttribute("data-id");
+      if (!id) continue;
+
+      try {
+        const blob = await uc.getHistoryItemBlob(id);
+        if (blob?.thumbnailBlob) {
+          const img = document.createElement("img");
+          img.src = `data:${blob.mime};base64,${blob.thumbnailBlob}`;
+          img.alt = "Image thumbnail";
+          img.className = "thumbnail-img";
+          el.appendChild(img);
+        }
+      } catch (err) {
+        console.error("[Renderer] Failed to load thumbnail:", err);
+      }
+    }
+
+    // Load full images for expanded view
+    const fullImageEls = container.querySelectorAll(".history-full-image");
+    for (const el of fullImageEls) {
+      const id = el.getAttribute("data-id");
+      if (!id) continue;
+
+      try {
+        const blob = await uc.getHistoryItemBlob(id);
+        if (blob?.contentBlob) {
+          const img = document.createElement("img");
+          img.src = `data:${blob.mime};base64,${blob.contentBlob}`;
+          img.alt = "Full image";
+          img.className = "full-image";
+          el.appendChild(img);
+        }
+      } catch (err) {
+        console.error("[Renderer] Failed to load full image:", err);
+      }
+    }
   }
 
   function escapeHtml(str: string): string {
@@ -587,6 +674,12 @@
         }
       } else if (msg.type === "clip_event") {
         console.log("[Renderer] Received clipboard event");
+        uc.transportReceive(msg);
+      } else if (msg.type === "clip_start") {
+        console.log("[Renderer] Received clip_start for image transfer");
+        uc.transportReceive(msg);
+      } else if (msg.type === "clip_chunk") {
+        console.log(`[Renderer] Received clip_chunk ${msg.chunkIndex + 1}/${msg.totalChunks}`);
         uc.transportReceive(msg);
       } else if (msg.type === "unpair") {
         console.log("[Renderer] Received unpair request from peer");

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:;" />
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:;" />
   <title>Universal Clipboard</title>
   <style>
     * {
@@ -435,6 +435,50 @@
     }
 
     .history-item.expanded .history-preview {
+      display: none;
+    }
+
+    /* Image thumbnails and full images */
+    .history-thumbnail {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1e293b;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .history-thumbnail .thumbnail-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .history-full-image {
+      display: none;
+      max-width: 100%;
+      margin-top: 8px;
+      padding: 12px;
+      background: #1e293b;
+      border-radius: 4px;
+      border: 1px solid #334155;
+      text-align: center;
+    }
+
+    .history-full-image .full-image {
+      max-width: 100%;
+      max-height: 400px;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .history-item.expanded .history-full-image {
+      display: block;
+    }
+
+    .history-item.expanded .history-thumbnail {
       display: none;
     }
 

@@ -5,6 +5,10 @@ const UUID_V4_LOWERCASE_REGEX =
 const BASE64_REGEX =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
+// Supported image MIME types for clipboard sync
+export const SUPPORTED_IMAGE_MIMES = ["image/png", "image/jpeg"] as const;
+export type SupportedImageMime = (typeof SUPPORTED_IMAGE_MIMES)[number];
+
 export const DeviceIdSchema = z
   .string()
   .regex(UUID_V4_LOWERCASE_REGEX, "deviceId must be lowercase UUID v4");
@@ -99,6 +103,28 @@ export const ClipEventMessageSchema = z.object({
   ciphertext: Base64Schema,
 });
 
+// Metadata message sent before image chunks
+export const ClipStartMessageSchema = z.object({
+  type: z.literal("clip_start"),
+  eventId: z.string().uuid(),
+  originDeviceId: DeviceIdSchema,
+  timestampMs: z.number().int().nonnegative(),
+  mime: z.enum(SUPPORTED_IMAGE_MIMES),
+  totalBytes: z.number().int().positive(),
+  totalChunks: z.number().int().positive(),
+});
+
+// Individual chunk message for image transfer
+export const ClipChunkMessageSchema = z.object({
+  type: z.literal("clip_chunk"),
+  eventId: z.string().uuid(),
+  originDeviceId: DeviceIdSchema,
+  chunkIndex: z.number().int().nonnegative(),
+  totalChunks: z.number().int().positive(),
+  mime: z.enum(SUPPORTED_IMAGE_MIMES),
+  data: Base64Schema,
+});
+
 export const ClientToServerMessageSchema = z.union([
   HelloMessageSchema,
   HeartbeatMessageSchema,
@@ -131,5 +157,7 @@ export type DeviceInfo = z.infer<typeof DeviceInfoSchema>;
 export type DevicesUpdateMessage = z.infer<typeof DevicesUpdateMessageSchema>;
 export type ErrorMessage = z.infer<typeof ErrorMessageSchema>;
 export type ClipEventMessage = z.infer<typeof ClipEventMessageSchema>;
+export type ClipStartMessage = z.infer<typeof ClipStartMessageSchema>;
+export type ClipChunkMessage = z.infer<typeof ClipChunkMessageSchema>;
 export type ClientToServerMessage = z.infer<typeof ClientToServerMessageSchema>;
 export type ServerToClientMessage = z.infer<typeof ServerToClientMessageSchema>;

@@ -1,6 +1,8 @@
 export {
   Base64Schema,
   ClipEventMessageSchema,
+  ClipStartMessageSchema,
+  ClipChunkMessageSchema,
   ClientToServerMessageSchema,
   DeviceIdSchema,
   DeviceInfoSchema,
@@ -18,10 +20,14 @@ export {
   ServerToClientMessageSchema,
   SignalMessageSchema,
   SignalPayloadSchema,
+  SUPPORTED_IMAGE_MIMES,
 } from "./schemas";
 
 export type {
   ClipEventMessage,
+  ClipStartMessage,
+  ClipChunkMessage,
+  SupportedImageMime,
   ClientToServerMessage,
   DeviceId,
   DeviceInfo,
