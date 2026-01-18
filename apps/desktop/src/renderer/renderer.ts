@@ -3,8 +3,28 @@
   // ============ Types ============
   type RtcConnectionState = "disconnected" | "connecting" | "connected" | "failed";
 
+  interface HistoryItem {
+    id: string;
+    type: "text" | "image" | "file";
+    preview: string;
+    size: number;
+    sourceDeviceId: string;
+    createdAt: number;
+  }
+
+  interface Identity {
+    deviceId: string;
+    deviceName: string;
+    platform: string;
+    publicKey: string;
+  }
+
   interface UcApi {
     platform: string;
+    getIdentity: () => Promise<Identity>;
+    getHistory: () => Promise<HistoryItem[]>;
+    getHistoryItem: (id: string) => Promise<HistoryItem | null>;
+    onHistoryUpdated: (callback: () => void) => () => void;
     connect: (config: { serverUrl: string; deviceId: string }) => Promise<{ success: boolean }>;
     disconnect: () => Promise<{ success: boolean }>;
     getConnectionState: () => Promise<{
@@ -182,6 +202,10 @@
 
     if (page === "pairing") {
       updatePairingPageState();
+    } else if (page === "history") {
+      loadHistory();
+    } else if (page === "devices") {
+      updateDeviceList();
     }
   }
 
@@ -239,6 +263,124 @@
     if (webrtcStatusCard) {
       webrtcStatusCard.style.display = currentPeerId ? "block" : "none";
     }
+
+    // Update device list when WebRTC state changes
+    updateDeviceList();
+  }
+
+  // ============ History ============
+  async function loadHistory(): Promise<void> {
+    const historyList = document.getElementById("historyList");
+    if (!historyList) return;
+
+    try {
+      const items = await uc.getHistory();
+
+      if (!items || items.length === 0) {
+        historyList.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">📋</div>
+            <h3>No clipboard history</h3>
+            <p>Copied items will appear here</p>
+          </div>
+        `;
+        return;
+      }
+
+      historyList.innerHTML = items.map((item) => `
+        <div class="history-item" data-id="${item.id}">
+          <div class="history-type-icon">${item.type === "text" ? "📝" : item.type === "image" ? "🖼️" : "📁"}</div>
+          <div class="history-content">
+            <div class="history-preview">${escapeHtml(item.preview || "").slice(0, 100)}</div>
+            <div class="history-meta">${formatTime(item.createdAt)} · ${item.type} · ${formatBytes(item.size)}</div>
+          </div>
+          <div class="history-actions">
+            <button class="small secondary copy-btn" data-id="${item.id}">Copy</button>
+          </div>
+        </div>
+      `).join("");
+
+      // Add copy button handlers
+      historyList.querySelectorAll(".copy-btn").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          const id = (e.target as HTMLElement).getAttribute("data-id");
+          if (id) {
+            const item = await uc.getHistoryItem(id);
+            if (item && item.preview) {
+              await navigator.clipboard.writeText(item.preview);
+              (e.target as HTMLButtonElement).textContent = "Copied!";
+              setTimeout(() => {
+                (e.target as HTMLButtonElement).textContent = "Copy";
+              }, 1500);
+            }
+          }
+        });
+      });
+    } catch (err) {
+      console.error("[Renderer] Failed to load history:", err);
+    }
+  }
+
+  function formatTime(ts: number): string {
+    const date = new Date(ts);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMs / 3600000);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+  }
+
+  function formatBytes(bytes: number): string {
+    if (!bytes) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function escapeHtml(str: string): string {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ============ Devices ============
+  function updateDeviceList(): void {
+    const deviceList = document.getElementById("deviceList");
+    if (!deviceList) return;
+
+    if (!currentPeerId) {
+      deviceList.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📱</div>
+          <h3>No devices paired</h3>
+          <p>Pair with another device to start syncing clipboards</p>
+        </div>
+      `;
+      return;
+    }
+
+    const rtcState = webrtc?.getState() || "disconnected";
+    const isOnline = rtcState === "connected";
+
+    deviceList.innerHTML = `
+      <div class="device-item">
+        <div class="device-info">
+          <div class="device-avatar">💻</div>
+          <div class="device-details">
+            <h4>Device ${currentPeerId.slice(0, 8)}...</h4>
+            <div class="device-meta">
+              <span class="${isOnline ? "online-badge" : "offline-badge"}">
+                ${isOnline ? "● Online" : "○ Offline"}
+              </span>
+              <span>WebRTC: ${rtcState}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   // ============ Pairing ============
@@ -504,6 +646,14 @@
 
     uc.onError((msg) => showPairingError(msg.message));
 
+    // Listen for history updates and auto-refresh
+    uc.onHistoryUpdated(() => {
+      console.log("[Renderer] History updated");
+      if (currentPage === "history") {
+        loadHistory();
+      }
+    });
+
     uc.onSignal(async (msg) => {
       if (!webrtc && currentPeerId === msg.from) {
         const iceServers = await uc.getIceServers();
@@ -518,6 +668,10 @@
       }
       if (webrtc) await webrtc.handleSignal(msg.payload);
     });
+
+    // Load initial data
+    loadHistory();
+    updateDeviceList();
 
     console.log("[Renderer] Initialized with deviceId:", deviceId);
   }

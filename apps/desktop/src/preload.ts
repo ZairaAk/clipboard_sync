@@ -4,6 +4,18 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("uc", {
   platform: process.platform,
 
+  // Identity
+  getIdentity: () => ipcRenderer.invoke("identity:get"),
+
+  // History
+  getHistory: () => ipcRenderer.invoke("history:list"),
+  getHistoryItem: (id: string) => ipcRenderer.invoke("history:get", id),
+  onHistoryUpdated: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("history:updated", handler);
+    return () => ipcRenderer.removeListener("history:updated", handler);
+  },
+
   // Connection management
   connect: (config: { serverUrl: string; deviceId: string }) =>
     ipcRenderer.invoke("uc:connect", config),
