@@ -538,8 +538,8 @@
           pingResult.textContent = "Pong received! Connection works!";
           pingResult.style.color = "#4ade80";
         }
-      } else if (msg.type === "clipboard") {
-        console.log("[Renderer] Received clipboard data:", msg.data?.slice(0, 50));
+      } else if (msg.type === "clip_event") {
+        console.log("[Renderer] Received clipboard event");
         uc.transportReceive(msg);
       } else if (msg.type === "unpair") {
         console.log("[Renderer] Received unpair request from peer");
