@@ -190,6 +190,20 @@
   let webrtc: WebRtcManager | null = null;
   let currentPeerId: string | null = null;
   let currentPage = "devices";
+  let syncSettings = {
+    enabled: true,
+    text: true,
+    images: true,
+  };
+
+  try {
+    const saved = localStorage.getItem("syncSettings");
+    if (saved) {
+      syncSettings = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error("Failed to load settings:", e);
+  }
 
 
 
@@ -672,6 +686,24 @@
       const msg = JSON.parse(data);
       const pingResult = document.getElementById("pingResult");
 
+      // Filter incoming events based on settings
+      if (!syncSettings.enabled) {
+        console.log("[Renderer] Sync disabled, ignoring incoming message");
+        return;
+      }
+
+      const isText = msg.type === "clip_event";
+      const isImage = msg.type === "clip_start" || msg.type === "clip_chunk";
+
+      if (isText && !syncSettings.text) {
+        console.log("[Renderer] Text sync disabled, ignoring");
+        return;
+      }
+      if (isImage && !syncSettings.images) {
+        console.log("[Renderer] Image sync disabled, ignoring");
+        return;
+      }
+
       if (msg.type === "ping") {
         webrtc?.send(JSON.stringify({ type: "pong", ts: Date.now() }));
         if (pingResult) pingResult.textContent = "Ping received!";
@@ -850,9 +882,42 @@
     }
 
     // Settings toggles
-    document.querySelectorAll(".toggle").forEach((toggle) => {
-      toggle.addEventListener("click", () => toggle.classList.toggle("active"));
-    });
+    const syncEnabledToggle = document.getElementById("syncEnabledToggle");
+    const syncTextToggle = document.getElementById("syncTextToggle");
+    const syncImageToggle = document.getElementById("syncImageToggle");
+
+    function updateToggleUI() {
+      if (syncEnabledToggle) syncEnabledToggle.className = `toggle ${syncSettings.enabled ? "active" : ""}`;
+      if (syncTextToggle) syncTextToggle.className = `toggle ${syncSettings.text ? "active" : ""}`;
+      if (syncImageToggle) syncImageToggle.className = `toggle ${syncSettings.images ? "active" : ""}`;
+    }
+
+    // Initialize toggles
+    updateToggleUI();
+
+    if (syncEnabledToggle) {
+      syncEnabledToggle.addEventListener("click", () => {
+        syncSettings.enabled = !syncSettings.enabled;
+        localStorage.setItem("syncSettings", JSON.stringify(syncSettings));
+        updateToggleUI();
+      });
+    }
+
+    if (syncTextToggle) {
+      syncTextToggle.addEventListener("click", () => {
+        syncSettings.text = !syncSettings.text;
+        localStorage.setItem("syncSettings", JSON.stringify(syncSettings));
+        updateToggleUI();
+      });
+    }
+
+    if (syncImageToggle) {
+      syncImageToggle.addEventListener("click", () => {
+        syncSettings.images = !syncSettings.images;
+        localStorage.setItem("syncSettings", JSON.stringify(syncSettings));
+        updateToggleUI();
+      });
+    }
 
     // Search history
     const searchHistoryBtn = document.getElementById("searchHistoryBtn");
@@ -967,7 +1032,26 @@
       updateDeviceMap(data.devices);
     });
 
-    uc.onTransportSend((event) => {
+    uc.onTransportSend((rawEvent) => {
+      const event = rawEvent as any;
+      // Filter outgoing events
+      if (!syncSettings.enabled) {
+        console.log("[Renderer] Sync disabled, suppressing outgoing event");
+        return;
+      }
+
+      const isText = event.type === "clip_event";
+      const isImage = event.type === "clip_start" || event.type === "clip_chunk";
+
+      if (isText && !syncSettings.text) {
+        console.log("[Renderer] Text sync disabled, suppressing outgoing event");
+        return;
+      }
+      if (isImage && !syncSettings.images) {
+        console.log("[Renderer] Image sync disabled, suppressing outgoing event");
+        return;
+      }
+
       if (webrtc && webrtc.getState() === "connected") {
         console.log("[Renderer] Sending clipboard event via WebRTC");
         webrtc.send(JSON.stringify(event));
