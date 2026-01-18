@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow, app } from "electron";
 import { WsClient } from "../ws/client";
 import { DEFAULT_ICE_SERVERS } from "../config/defaultIce";
 import { resolveIceServers } from "../config/ice";
+import { DeviceStore } from "../deviceStore";
 import type {
   DevicesUpdateMessage,
   PairCreatedMessage,
@@ -35,8 +36,17 @@ function getConnectionState(): ConnectionState {
   };
 }
 
-export function initializeIpcHandlers(window: BrowserWindow): void {
+export function initializeIpcHandlers(window: BrowserWindow, deviceStore: DeviceStore): void {
   mainWindow = window;
+
+  // Get known devices
+  ipcMain.handle("uc:getKnownDevices", () => deviceStore.getAll());
+
+  // Forget a device
+  ipcMain.handle("uc:forgetDevice", (_event, deviceId: string) => {
+    deviceStore.remove(deviceId);
+    return { success: true };
+  });
 
   // Get current connection state
   ipcMain.handle("uc:getConnectionState", () => {
@@ -62,6 +72,7 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
           }
         },
         onDevicesUpdate: (msg: DevicesUpdateMessage) => {
+          deviceStore.upsertMany(msg.devices);
           sendToRenderer("uc:devicesUpdate", msg);
         },
         onPairCreated: (msg: PairCreatedMessage) => {

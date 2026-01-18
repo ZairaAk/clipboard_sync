@@ -6,6 +6,13 @@
   // ============ Types ============
   type RtcConnectionState = "disconnected" | "connecting" | "connected" | "failed";
 
+  type DeviceRecord = {
+    deviceId: string;
+    deviceName: string;
+    platform: string;
+    lastSeen: number;
+  };
+
   interface HistoryItem {
     id: string;
     mime: string;
@@ -29,6 +36,9 @@
   interface UcApi {
     platform: string;
     getIdentity: () => Promise<Identity>;
+    updateIdentity: (name: string) => Promise<{ success: boolean; name?: string }>;
+    getKnownDevices: () => Promise<DeviceRecord[]>;
+    forgetDevice: (deviceId: string) => Promise<{ success: boolean }>;
     getHistory: () => Promise<HistoryItem[]>;
     getHistoryItem: (id: string) => Promise<HistoryItem | null>;
     deleteHistoryItem: (id: string) => Promise<{ success: boolean }>;
@@ -300,6 +310,17 @@
     updateDeviceList();
   }
 
+  // ============ Devices Map & Queue ============
+  const deviceMap = new Map<string, string>(); // id -> name
+  const offlineQueue: any[] = [];
+
+  function updateDeviceMap(devices: DeviceRecord[]) {
+    devices.forEach((d) => {
+      deviceMap.set(d.deviceId, d.deviceName);
+    });
+    updateDeviceList(); // Refresh UI when map changes
+  }
+
   // ============ History ============
   let expandedHistoryId: string | null = null;
 
@@ -325,6 +346,7 @@
         const isExpanded = expandedHistoryId === item.id;
         const typeIcon = item.mime.startsWith("image/") ? "🖼️" : item.mime === "application/octet-stream" ? "📁" : "📝";
         const typeLabel = item.mime.startsWith("image/") ? "image" : item.mime === "application/octet-stream" ? "file" : "text";
+        const sourceName = item.originDeviceId === deviceId ? "You" : (deviceMap.get(item.originDeviceId) || "Device " + item.originDeviceId.slice(0, 8));
 
         return `
         <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${item.id}">
@@ -332,7 +354,7 @@
           <div class="history-content">
             <div class="history-preview">${escapeHtml(item.preview || "").slice(0, 100)}</div>
             <div class="history-full-content">${escapeHtml(item.contentText || item.preview || "")}</div>
-            <div class="history-meta">${formatTime(item.lastSeen)} · ${typeLabel} · ${formatBytes(item.sizeBytes)}</div>
+            <div class="history-meta">${formatTime(item.lastSeen)} · ${sourceName} · ${typeLabel}</div>
           </div>
           <div class="history-actions" onclick="event.stopPropagation()">
             <button class="small secondary copy-btn" data-id="${item.id}">Copy</button>
@@ -427,7 +449,7 @@
     const deviceList = document.getElementById("deviceList");
     if (!deviceList) return;
 
-    if (!currentPeerId) {
+    if (deviceMap.size === 0 && !currentPeerId) {
       deviceList.innerHTML = `
         <div class="empty-state">
           <div class="icon">📱</div>
@@ -438,40 +460,65 @@
       return;
     }
 
-    const rtcState = webrtc?.getState() || "disconnected";
-    const isOnline = rtcState === "connected";
+    const items: string[] = [];
 
-    deviceList.innerHTML = `
-      <div class="device-item">
-        <div class="device-info">
-          <div class="device-avatar">💻</div>
-          <div class="device-details">
-            <h4>Device ${currentPeerId.slice(0, 8)}...</h4>
-            <div class="device-meta">
-              <span class="${isOnline ? "online-badge" : "offline-badge"}">
-                ${isOnline ? "● Online" : "○ Offline"}
-              </span>
-              <span>WebRTC: ${rtcState}</span>
+    // Add known devices from map
+    deviceMap.forEach((name, id) => {
+      const isConnected = (id === currentPeerId && webrtc?.getState() === "connected");
+      const statusClass = isConnected ? "connected" : "disconnected";
+      const statusText = isConnected ? "Online" : "Offline";
+
+      items.push(`
+        <div class="device-item">
+          <div class="device-info">
+            <div class="device-avatar">💻</div>
+            <div class="device-details">
+              <h4>${escapeHtml(name)}</h4>
+              <div class="device-meta">
+                <span class="status-dot ${statusClass}"></span>
+                ${statusText} • ID: ${id.slice(0, 8)}...
+              </div>
             </div>
           </div>
+          <div class="device-actions">
+            ${isConnected
+          ? '<button class="small secondary" id="unpairBtn">Unpair</button>'
+          : `<button class="small danger icon-only forget-btn" data-id="${id}" title="Forget Device">🗑️</button>`
+        }
+          </div>
         </div>
-        <div class="device-actions">
-          <button class="small danger unpair-btn" data-peer-id="${currentPeerId}">Unpair</button>
-        </div>
-      </div>
-    `;
+      `);
+    });
 
-    // Add unpair button handler
-    const unpairBtn = deviceList.querySelector(".unpair-btn");
-    if (unpairBtn) {
-      unpairBtn.addEventListener("click", async () => {
-        const confirmed = confirm("Are you sure you want to unpair this device? You will need to pair again to sync clipboards.");
-        if (confirmed) {
-          unpairDevice();
+    deviceList.innerHTML = items.join("");
+
+    // Re-attach unpair button listener if it exists
+    document.getElementById("unpairBtn")?.addEventListener("click", () => unpairDevice(true));
+
+    // Attach forget button listeners
+    const forgetBtns = deviceList.querySelectorAll(".forget-btn");
+    console.log(`[Renderer] Found ${forgetBtns.length} forget buttons`);
+
+    forgetBtns.forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        console.log("[Renderer] Forget button clicked");
+        const id = (e.currentTarget as HTMLElement).dataset.id;
+        console.log("[Renderer] Forgetting ID:", id);
+
+        if (id && confirm("Forget this device? It will be removed from your list.")) {
+          try {
+            const result = await uc.forgetDevice(id);
+            console.log("[Renderer] Forget result:", result);
+            deviceMap.delete(id);
+            updateDeviceList();
+          } catch (err) {
+            console.error("[Renderer] Failed to forget device:", err);
+          }
         }
       });
-    }
+    });
   }
+
 
   function unpairDevice(notifyPeer = true): void {
     // Notify peer if we are initiating the unpair
@@ -553,10 +600,23 @@
 
   // ============ Initialize ============
   async function init(): Promise<void> {
-    deviceId = getOrCreateDeviceId();
+    const identity = await uc.getIdentity();
+    deviceId = identity.deviceId;
 
     const deviceIdDisplay = document.getElementById("deviceIdDisplay");
     if (deviceIdDisplay) deviceIdDisplay.textContent = deviceId;
+
+    // Populate settings
+    const deviceNameInput = document.getElementById("deviceNameInput") as HTMLInputElement;
+    if (deviceNameInput) deviceNameInput.value = identity.deviceName;
+
+    // Load known devices
+    try {
+      const devices = await uc.getKnownDevices();
+      updateDeviceMap(devices);
+    } catch (err) {
+      console.error("Failed to load known devices:", err);
+    }
 
     // Navigation
     document.querySelectorAll(".nav-item").forEach((item) => {
@@ -733,6 +793,24 @@
       });
     }
 
+    const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+    const settingsDeviceNameInput = document.getElementById("deviceNameInput") as HTMLInputElement;
+
+    if (saveSettingsBtn && settingsDeviceNameInput) {
+      saveSettingsBtn.addEventListener("click", async () => {
+        const newName = settingsDeviceNameInput.value.trim();
+        if (newName) {
+          await uc.updateIdentity(newName);
+          // Reconnect to broadcast new name
+          if (wsStatus === "connected") {
+            await uc.disconnect();
+            await uc.connect({ serverUrl: DEFAULT_SERVER_URL, deviceId: deviceId! });
+          }
+          alert("Settings saved");
+        }
+      });
+    }
+
     if (resetNgrokBtn && ngrokUrlInput) {
       resetNgrokBtn.addEventListener("click", () => {
         ngrokUrlInput.value = "";
@@ -772,7 +850,16 @@
           peerId: msg.peerId,
           iceServers,
           sendSignal: (payload) => uc.sendSignal(msg.peerId, payload),
-          onStateChange: updateWebRtcStatus,
+          onStateChange: (state) => {
+            updateWebRtcStatus(state);
+            if (state === "connected") {
+              console.log(`[Renderer] Flushing ${offlineQueue.length} queued messages`);
+              while (offlineQueue.length > 0) {
+                const event = offlineQueue.shift();
+                webrtc?.send(JSON.stringify(event));
+              }
+            }
+          },
           onMessage: handleDataChannelMessage,
         });
         await webrtc.start();
@@ -792,10 +879,18 @@
       }
     });
 
+    uc.onDevicesUpdate((msg) => {
+      const data = msg as { devices: DeviceRecord[] };
+      updateDeviceMap(data.devices);
+    });
+
     uc.onTransportSend((event) => {
-      console.log("[Renderer] Sending clipboard event via WebRTC");
       if (webrtc && webrtc.getState() === "connected") {
+        console.log("[Renderer] Sending clipboard event via WebRTC");
         webrtc.send(JSON.stringify(event));
+      } else {
+        console.log("[Renderer] Queueing clipboard event (offline)");
+        offlineQueue.push(event);
       }
     });
 

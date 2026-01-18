@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import os from "node:os";
-import { ensureIdentity } from "./identity";
+import { ensureIdentity, updateIdentityName } from "./identity";
+import { DeviceStore } from "./deviceStore";
 import { HistoryStore } from "./clipboard/historyStore";
 import { ClipboardSyncEngine } from "./clipboard/syncEngine";
 import { resolveIceServers } from "./config/ice";
@@ -28,8 +29,10 @@ app.whenReady().then(() => {
   const identity = ensureIdentity(app.getPath("userData"));
   const mainWindow = createMainWindow();
 
+  const deviceStore = new DeviceStore(app.getPath("userData"));
+
   // Initialize IPC handlers for WebSocket, pairing, signaling
-  initializeIpcHandlers(mainWindow);
+  initializeIpcHandlers(mainWindow, deviceStore);
 
   const historyStore = new HistoryStore(app.getPath("userData"));
 
@@ -55,10 +58,19 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("identity:get", () => ({
     deviceId: identity.deviceId,
-    deviceName: os.hostname(),
+    deviceName: identity.deviceName || os.hostname(),
     platform: process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux",
     publicKey: identity.publicKey,
   }));
+
+  ipcMain.handle("identity:update", (_event, { name }: { name: string }) => {
+    const updated = updateIdentityName(app.getPath("userData"), name);
+    if (updated) {
+      identity.deviceName = updated.deviceName;
+      return { success: true, name: updated.deviceName };
+    }
+    return { success: false };
+  });
   ipcMain.handle("config:ice", () =>
     resolveIceServers({ env: process.env, userDataDir: app.getPath("userData") }),
   );

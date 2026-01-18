@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld("uc", {
 
   // Identity
   getIdentity: () => ipcRenderer.invoke("identity:get"),
+  updateIdentity: (name: string) => ipcRenderer.invoke("identity:update", { name }),
+  getKnownDevices: () => ipcRenderer.invoke("uc:getKnownDevices"),
+  forgetDevice: (deviceId: string) => ipcRenderer.invoke("uc:forgetDevice", deviceId),
 
   // History
   getHistory: () => ipcRenderer.invoke("history:list"),
