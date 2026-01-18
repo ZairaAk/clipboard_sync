@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("uc", {
   // History
   getHistory: () => ipcRenderer.invoke("history:list"),
   getHistoryItem: (id: string) => ipcRenderer.invoke("history:get", id),
+  getHistoryItemBlob: (id: string) => ipcRenderer.invoke("history:getBlob", id),
   deleteHistoryItem: (id: string) => ipcRenderer.invoke("history:delete", id),
   onHistoryUpdated: (callback: () => void) => {
     const handler = () => callback();

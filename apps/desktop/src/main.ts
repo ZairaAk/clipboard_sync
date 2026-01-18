@@ -51,6 +51,16 @@ app.whenReady().then(() => {
 
   ipcMain.handle("history:list", () => historyStore.list());
   ipcMain.handle("history:get", (_event, id: string) => historyStore.getById(id));
+  ipcMain.handle("history:getBlob", async (_event, id: string) => {
+    const blob = await historyStore.getBlob(id);
+    if (!blob) return null;
+    // Convert Buffers to base64 for IPC transfer
+    return {
+      mime: blob.mime,
+      contentBlob: blob.contentBlob?.toString("base64") ?? null,
+      thumbnailBlob: blob.thumbnailBlob?.toString("base64") ?? null,
+    };
+  });
   ipcMain.handle("history:delete", async (_event, id: string) => {
     await historyStore.deleteById(id);
     notifyHistoryUpdated();
