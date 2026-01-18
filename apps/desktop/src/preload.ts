@@ -71,4 +71,12 @@ contextBridge.exposeInMainWorld("uc", {
     ipcRenderer.on("uc:error", handler);
     return () => ipcRenderer.removeListener("uc:error", handler);
   },
+
+  // Transport for clipboard events
+  transportReceive: (event: any) => ipcRenderer.send("transport:receive", event),
+  onTransportSend: (callback: (event: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, event: any) => callback(event);
+    ipcRenderer.on("transport:send", handler);
+    return () => ipcRenderer.removeListener("transport:send", handler);
+  },
 });

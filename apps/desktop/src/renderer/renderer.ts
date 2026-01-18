@@ -50,6 +50,10 @@
     onPairPaired: (callback: (msg: { a: string; b: string; peerId: string }) => void) => () => void;
     onSignal: (callback: (msg: { from: string; payload: { kind: string; data: unknown } }) => void) => () => void;
     onError: (callback: (msg: { code: string; message: string }) => void) => () => void;
+
+    // Transport
+    transportReceive: (event: unknown) => void;
+    onTransportSend: (callback: (event: unknown) => void) => () => void;
   }
 
   // ============ WebRTC Manager ============
@@ -536,6 +540,7 @@
         }
       } else if (msg.type === "clipboard") {
         console.log("[Renderer] Received clipboard data:", msg.data?.slice(0, 50));
+        uc.transportReceive(msg);
       } else if (msg.type === "unpair") {
         console.log("[Renderer] Received unpair request from peer");
         unpairDevice(false); // Don't notify back to avoid loop
@@ -784,6 +789,13 @@
       console.log("[Renderer] History updated");
       if (currentPage === "history") {
         loadHistory();
+      }
+    });
+
+    uc.onTransportSend((event) => {
+      console.log("[Renderer] Sending clipboard event via WebRTC");
+      if (webrtc && webrtc.getState() === "connected") {
+        webrtc.send(JSON.stringify(event));
       }
     });
 
