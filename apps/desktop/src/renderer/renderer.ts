@@ -208,9 +208,7 @@
       pageEl.classList.add("active");
     }
 
-    if (page === "pairing") {
-      updatePairingPageState();
-    } else if (page === "history") {
+    if (page === "history") {
       loadHistory();
     } else if (page === "devices") {
       updateDeviceList();
@@ -223,29 +221,51 @@
   function updateStatusUI(status: string): void {
     wsStatus = status as typeof wsStatus;
 
+    // Update sidebar status
     const sidebarDot = document.getElementById("sidebarStatusDot");
     const sidebarText = document.getElementById("sidebarStatusText");
-    const connectBtn = document.getElementById("connectBtn");
 
     if (sidebarDot) sidebarDot.className = `status-dot ${status}`;
     if (sidebarText) sidebarText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+    // Update main connection status card
+    const mainStatusDot = document.getElementById("mainStatusDot");
+    const mainStatusText = document.getElementById("mainStatusText");
+    const connectBtn = document.getElementById("connectBtn");
+    const serverConnectSection = document.getElementById("serverConnectSection");
+    const connectedInfoSection = document.getElementById("connectedInfoSection");
+    const addDeviceBtn = document.getElementById("addDeviceBtn") as HTMLButtonElement;
+
+    if (mainStatusDot) mainStatusDot.className = `status-dot ${status}`;
+    if (mainStatusText) mainStatusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
     if (connectBtn) connectBtn.textContent = status === "connected" ? "Disconnect" : "Connect";
 
-    updatePairingPageState();
+    // Toggle connect section visibility
+    if (serverConnectSection && connectedInfoSection) {
+      if (status === "connected") {
+        serverConnectSection.classList.add("hidden");
+        connectedInfoSection.classList.remove("hidden");
+      } else {
+        serverConnectSection.classList.remove("hidden");
+        connectedInfoSection.classList.add("hidden");
+      }
+    }
+
+    // Enable/disable add device button based on connection
+    if (addDeviceBtn) {
+      addDeviceBtn.disabled = status !== "connected";
+    }
+
+    updateAddDeviceSectionState();
   }
 
-  function updatePairingPageState(): void {
-    const connectNotice = document.getElementById("pairingConnectNotice");
-    const pairingOptions = document.getElementById("pairingOptions");
+  function updateAddDeviceSectionState(): void {
+    const addDeviceSection = document.getElementById("addDeviceSection");
 
-    if (connectNotice && pairingOptions) {
-      if (wsStatus === "connected") {
-        connectNotice.classList.add("hidden");
-        pairingOptions.classList.remove("hidden");
-      } else {
-        connectNotice.classList.remove("hidden");
-        pairingOptions.classList.add("hidden");
-      }
+    // If not connected, hide the add device section
+    if (addDeviceSection && wsStatus !== "connected") {
+      addDeviceSection.classList.add("hidden");
+      resetPairingViews();
     }
   }
 
@@ -449,7 +469,16 @@
     }
   }
 
-  function unpairDevice(): void {
+  function unpairDevice(notifyPeer = true): void {
+    // Notify peer if we are initiating the unpair
+    if (notifyPeer && webrtc) {
+      try {
+        webrtc.send(JSON.stringify({ type: "unpair" }));
+      } catch (err) {
+        console.error("[Renderer] Failed to send unpair notification:", err);
+      }
+    }
+
     // Close WebRTC connection if exists
     if (webrtc) {
       webrtc = null;
@@ -458,8 +487,12 @@
     updateWebRtcStatus("disconnected");
     updateDeviceList();
 
-    // Navigate to pairing page so user can pair again
-    navigateToPage("pairing");
+    // Show add device section so user can pair again
+    const addDeviceSection = document.getElementById("addDeviceSection");
+    if (addDeviceSection && wsStatus === "connected") {
+      addDeviceSection.classList.remove("hidden");
+      resetPairingViews();
+    }
   }
 
   // ============ Pairing ============
@@ -480,8 +513,11 @@
     document.getElementById("createCodeView")?.classList.add("hidden");
     document.getElementById("joinCodeView")?.classList.add("hidden");
     document.getElementById("pairingSuccess")?.classList.add("hidden");
-    const pairOptions = document.querySelector(".pair-options") as HTMLElement;
-    if (pairOptions) pairOptions.style.display = "flex";
+
+    // Show the pairing options inline
+    const pairingOptionsInline = document.getElementById("pairingOptionsInline");
+    if (pairingOptionsInline) pairingOptionsInline.classList.remove("hidden");
+
     hidePairingError();
   }
 
@@ -500,6 +536,10 @@
         }
       } else if (msg.type === "clipboard") {
         console.log("[Renderer] Received clipboard data:", msg.data?.slice(0, 50));
+      } else if (msg.type === "unpair") {
+        console.log("[Renderer] Received unpair request from peer");
+        unpairDevice(false); // Don't notify back to avoid loop
+        alert("The other device has unpaired.");
       }
     } catch (err) {
       console.error("[Renderer] Failed to parse message:", err);
@@ -507,7 +547,7 @@
   }
 
   // ============ Initialize ============
-  function init(): void {
+  async function init(): Promise<void> {
     deviceId = getOrCreateDeviceId();
 
     const deviceIdDisplay = document.getElementById("deviceIdDisplay");
@@ -543,35 +583,46 @@
       }
     });
 
-    // Add Device button
+    // Add Device button - show inline add device section
     const addDeviceBtn = document.getElementById("addDeviceBtn");
-    if (addDeviceBtn) {
-      addDeviceBtn.addEventListener("click", () => navigateToPage("pairing"));
+    const addDeviceSection = document.getElementById("addDeviceSection");
+    if (addDeviceBtn && addDeviceSection) {
+      addDeviceBtn.addEventListener("click", () => {
+        if (wsStatus === "connected") {
+          addDeviceSection.classList.remove("hidden");
+          resetPairingViews();
+        } else {
+          alert("Please connect to server first");
+        }
+      });
     }
 
-    // Go to devices button
-    const goToDevicesBtn = document.getElementById("goToDevicesBtn");
-    if (goToDevicesBtn) {
-      goToDevicesBtn.addEventListener("click", () => navigateToPage("devices"));
+    // Cancel Add Device button
+    const cancelAddDeviceBtn = document.getElementById("cancelAddDeviceBtn");
+    if (cancelAddDeviceBtn && addDeviceSection) {
+      cancelAddDeviceBtn.addEventListener("click", () => {
+        addDeviceSection.classList.add("hidden");
+        resetPairingViews();
+      });
+    }
+
+    // Close pairing success button
+    const closePairingSuccessBtn = document.getElementById("closePairingSuccessBtn");
+    if (closePairingSuccessBtn && addDeviceSection) {
+      closePairingSuccessBtn.addEventListener("click", () => {
+        addDeviceSection.classList.add("hidden");
+        resetPairingViews();
+      });
     }
 
     // Connect button
     const connectBtn = document.getElementById("connectBtn");
-    const serverUrlInput = document.getElementById("serverUrlInput") as HTMLInputElement;
-    if (connectBtn && serverUrlInput) {
-      // Set default ngrok URL
-      serverUrlInput.value = DEFAULT_SERVER_URL;
-
+    if (connectBtn) {
       connectBtn.addEventListener("click", async () => {
         if (wsStatus === "connected") {
           await uc.disconnect();
         } else {
-          const serverUrl = serverUrlInput.value.trim();
-          if (!serverUrl) {
-            alert("Please enter a server URL");
-            return;
-          }
-          await uc.connect({ serverUrl, deviceId: deviceId! });
+          await uc.connect({ serverUrl: DEFAULT_SERVER_URL, deviceId: deviceId! });
         }
       });
     }
@@ -581,7 +632,7 @@
     const joinPairOption = document.getElementById("joinPairOption");
     const createCodeView = document.getElementById("createCodeView");
     const joinCodeView = document.getElementById("joinCodeView");
-    const pairOptions = document.querySelector(".pair-options") as HTMLElement;
+    const pairingOptionsInline = document.getElementById("pairingOptionsInline");
 
     if (createPairOption) {
       createPairOption.addEventListener("click", async () => {
@@ -591,7 +642,7 @@
           showPairingError(result.error || "Failed to create code");
           return;
         }
-        if (pairOptions) pairOptions.style.display = "none";
+        if (pairingOptionsInline) pairingOptionsInline.classList.add("hidden");
         createCodeView?.classList.remove("hidden");
       });
     }
@@ -599,7 +650,7 @@
     if (joinPairOption) {
       joinPairOption.addEventListener("click", () => {
         hidePairingError();
-        if (pairOptions) pairOptions.style.display = "none";
+        if (pairingOptionsInline) pairingOptionsInline.classList.add("hidden");
         joinCodeView?.classList.remove("hidden");
         (document.getElementById("joinCodeInput") as HTMLInputElement)?.focus();
       });
@@ -672,7 +723,6 @@
           return;
         }
         await uc.disconnect();
-        if (serverUrlInput) serverUrlInput.value = url;
         await uc.connect({ serverUrl: url, deviceId: deviceId! });
         alert("Applied and reconnecting...");
       });
@@ -681,8 +731,7 @@
     if (resetNgrokBtn && ngrokUrlInput) {
       resetNgrokBtn.addEventListener("click", () => {
         ngrokUrlInput.value = "";
-        if (serverUrlInput) serverUrlInput.value = DEFAULT_SERVER_URL;
-        alert("Reset to default");
+        alert("Reset to default logic (uses hardcoded URL if not overridden)");
       });
     }
 
@@ -698,12 +747,14 @@
       console.log("[Renderer] Paired with:", msg.peerId);
       currentPeerId = msg.peerId;
 
-      resetPairingViews();
+      // Hide pairing options and show success
+      const pairingOptionsInline = document.getElementById("pairingOptionsInline");
       const pairingSuccess = document.getElementById("pairingSuccess");
       const pairedPeerIdText = document.getElementById("pairedPeerIdText");
-      const pairOptionsEl = document.querySelector(".pair-options") as HTMLElement;
 
-      if (pairOptionsEl) pairOptionsEl.style.display = "none";
+      document.getElementById("createCodeView")?.classList.add("hidden");
+      document.getElementById("joinCodeView")?.classList.add("hidden");
+      if (pairingOptionsInline) pairingOptionsInline.classList.add("hidden");
       if (pairingSuccess) pairingSuccess.classList.remove("hidden");
       if (pairedPeerIdText) pairedPeerIdText.textContent = msg.peerId.slice(0, 8) + "...";
 
@@ -754,6 +805,10 @@
     // Load initial data
     loadHistory();
     updateDeviceList();
+
+    // Auto-connect
+    console.log("[Renderer] Auto-connecting to server...");
+    await uc.connect({ serverUrl: DEFAULT_SERVER_URL, deviceId: deviceId! });
 
     console.log("[Renderer] Initialized with deviceId:", deviceId);
   }

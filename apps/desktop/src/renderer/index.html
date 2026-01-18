@@ -104,6 +104,13 @@
       background: #fbbf24;
     }
 
+    .connection-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
     /* Main Content Area */
     .main-content {
       flex: 1;
@@ -684,10 +691,6 @@
       <span class="icon">📋</span>
       <span>History</span>
     </div>
-    <div class="nav-item" data-page="pairing">
-      <span class="icon">🔗</span>
-      <span>Pairing</span>
-    </div>
     <div class="nav-item" data-page="settings">
       <span class="icon">⚙️</span>
       <span>Settings</span>
@@ -703,13 +706,100 @@
 
   <!-- Main Content -->
   <main class="main-content">
-    <!-- Page 1: Devices -->
+    <!-- Page 1: Devices (Combined with Pairing) -->
     <div id="page-devices" class="page active">
       <div class="page-header">
-        <h2>Connected Devices</h2>
+        <h2>Devices</h2>
         <button id="addDeviceBtn">Add Device</button>
       </div>
 
+      <!-- Connection Status Card -->
+      <div class="card" id="connectionStatusCard">
+        <div class="card-header">
+          <span class="card-title">Connection Status</span>
+          <div class="connection-indicator">
+            <div id="mainStatusDot" class="status-dot"></div>
+            <span id="mainStatusText">Disconnected</span>
+          </div>
+        </div>
+
+        <!-- Connect to Server (shown when disconnected) -->
+        <div id="serverConnectSection">
+          <p class="muted" style="margin-bottom: 12px;">Disconnected from signaling server.</p>
+          <div class="input-group" style="max-width: 400px; margin-bottom: 0;">
+            <div class="flex-row">
+              <button id="connectBtn" class="primary" style="width: 100%;">Connect</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connected Info (shown when connected) -->
+        <div id="connectedInfoSection" class="hidden">
+          <p class="success-text" style="margin: 0;">✓ Connected to signaling server</p>
+        </div>
+      </div>
+
+      <!-- Add Device Section (hidden by default, shown on Add Device click) -->
+      <div id="addDeviceSection" class="card hidden">
+        <div class="card-header">
+          <span class="card-title">Add New Device</span>
+          <button id="cancelAddDeviceBtn" class="small secondary">Cancel</button>
+        </div>
+
+        <!-- Pairing Options -->
+        <div id="pairingOptionsInline">
+          <div class="pair-options">
+            <div class="pair-option" id="createPairOption">
+              <span style="font-size: 32px;">📤</span>
+              <h3>Create Code</h3>
+              <p>Generate a code for another device to join</p>
+            </div>
+            <div class="pair-option" id="joinPairOption">
+              <span style="font-size: 32px;">📥</span>
+              <h3>Enter Code</h3>
+              <p>Join using a code from another device</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Create Code View -->
+        <div id="createCodeView" class="hidden">
+          <h3 style="margin-top: 0;">Share This Code</h3>
+          <p class="muted">Enter this code on the other device to connect</p>
+          <div id="pairCodeDisplay" class="pair-code-display">------</div>
+          <p class="muted" style="text-align: center;">Code expires in 2 minutes</p>
+          <div style="text-align: center; margin-top: 16px;">
+            <button id="cancelCreateBtn" class="secondary">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Join Code View -->
+        <div id="joinCodeView" class="hidden">
+          <h3 style="margin-top: 0;">Enter Pairing Code</h3>
+          <p class="muted">Enter the 6-digit code shown on the other device</p>
+          <div class="code-input-wrapper">
+            <input type="text" id="joinCodeInput" class="code-input" maxlength="6" placeholder="000000" />
+          </div>
+          <div id="pairingError" class="error-text hidden" style="text-align: center; margin-bottom: 12px;"></div>
+          <div style="display: flex; justify-content: center; gap: 12px;">
+            <button id="cancelJoinBtn" class="secondary">Cancel</button>
+            <button id="joinBtn">Join</button>
+          </div>
+        </div>
+
+        <!-- Pairing Success -->
+        <div id="pairingSuccess" class="hidden">
+          <div style="text-align: center;">
+            <span style="font-size: 48px;">✅</span>
+            <h3>Pairing Successful!</h3>
+            <p class="muted">Connected to: <span id="pairedPeerIdText"></span></p>
+            <p class="muted">WebRTC Status: <span id="pairingRtcStatus" class="rtc-status">Connecting...</span></p>
+            <button id="closePairingSuccessBtn" class="secondary" style="margin-top: 16px;">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paired Devices Card -->
       <div class="card">
         <div class="card-header">
           <span class="card-title">Paired Devices</span>
@@ -718,11 +808,12 @@
           <div class="empty-state">
             <div class="icon">📱</div>
             <h3>No devices paired</h3>
-            <p>Pair with another device to start syncing clipboards</p>
+            <p>Click "Add Device" to pair with another device</p>
           </div>
         </div>
       </div>
 
+      <!-- Active Connection Card -->
       <div class="card" id="webrtcStatusCard" style="display:none;">
         <div class="card-header">
           <span class="card-title">Active Connection</span>
@@ -767,79 +858,8 @@
       </div>
     </div>
 
-    <!-- Page 3: Pairing -->
-    <div id="page-pairing" class="page">
-      <div class="page-header">
-        <h2>Pair Device</h2>
-      </div>
 
-      <!-- Connection Required Notice -->
-      <div id="pairingConnectNotice" class="card">
-        <h3 style="margin-top: 0;">Connect to Server First</h3>
-        <p class="muted">You need to connect to a signaling server before pairing.</p>
-        <div class="input-group" style="max-width: 400px;">
-          <label>Server URL</label>
-          <div class="flex-row">
-            <input type="text" id="serverUrlInput" value="wss://unscrutinizing-unspiritually-jaylen.ngrok-free.dev" />
-            <button id="connectBtn">Connect</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Pairing Options (shown when connected) -->
-      <div id="pairingOptions" class="hidden">
-        <div class="pair-options">
-          <div class="pair-option" id="createPairOption">
-            <span style="font-size: 32px;">📤</span>
-            <h3>Create Code</h3>
-            <p>Generate a code for another device to join</p>
-          </div>
-          <div class="pair-option" id="joinPairOption">
-            <span style="font-size: 32px;">📥</span>
-            <h3>Enter Code</h3>
-            <p>Join using a code from another device</p>
-          </div>
-        </div>
-
-        <!-- Create Code View -->
-        <div id="createCodeView" class="card hidden">
-          <h3 style="margin-top: 0;">Share This Code</h3>
-          <p class="muted">Enter this code on the other device to connect</p>
-          <div id="pairCodeDisplay" class="pair-code-display">------</div>
-          <p class="muted" style="text-align: center;">Code expires in 2 minutes</p>
-          <div style="text-align: center; margin-top: 16px;">
-            <button id="cancelCreateBtn" class="secondary">Cancel</button>
-          </div>
-        </div>
-
-        <!-- Join Code View -->
-        <div id="joinCodeView" class="card hidden">
-          <h3 style="margin-top: 0;">Enter Pairing Code</h3>
-          <p class="muted">Enter the 6-digit code shown on the other device</p>
-          <div class="code-input-wrapper">
-            <input type="text" id="joinCodeInput" class="code-input" maxlength="6" placeholder="000000" />
-          </div>
-          <div id="pairingError" class="error-text hidden" style="text-align: center; margin-bottom: 12px;"></div>
-          <div style="display: flex; justify-content: center; gap: 12px;">
-            <button id="cancelJoinBtn" class="secondary">Cancel</button>
-            <button id="joinBtn">Join</button>
-          </div>
-        </div>
-
-        <!-- Pairing Success -->
-        <div id="pairingSuccess" class="card hidden">
-          <div style="text-align: center;">
-            <span style="font-size: 48px;">✅</span>
-            <h3>Pairing Successful!</h3>
-            <p class="muted">Connected to: <span id="pairedPeerIdText"></span></p>
-            <p class="muted">WebRTC Status: <span id="pairingRtcStatus" class="rtc-status">Connecting...</span></p>
-            <button id="goToDevicesBtn" style="margin-top: 16px;">View Devices</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Page 4: Settings -->
+    <!-- Page 3: Settings -->
     <div id="page-settings" class="page">
       <div class="page-header">
         <h2>Settings</h2>
