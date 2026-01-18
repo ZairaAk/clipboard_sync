@@ -48,6 +48,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle("history:list", () => historyStore.list());
   ipcMain.handle("history:get", (_event, id: string) => historyStore.getById(id));
+  ipcMain.handle("history:delete", async (_event, id: string) => {
+    await historyStore.deleteById(id);
+    notifyHistoryUpdated();
+    return { success: true };
+  });
   ipcMain.handle("identity:get", () => ({
     deviceId: identity.deviceId,
     deviceName: os.hostname(),

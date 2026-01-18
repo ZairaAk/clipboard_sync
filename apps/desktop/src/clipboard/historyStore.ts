@@ -133,6 +133,11 @@ export class HistoryStore {
     return row ?? null;
   }
 
+  async deleteById(id: string): Promise<boolean> {
+    await this.run("DELETE FROM history_items WHERE id = ?", [id]);
+    return true;
+  }
+
   close(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.db.close((err) => (err ? reject(err) : resolve()));

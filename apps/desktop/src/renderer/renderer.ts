@@ -1,15 +1,22 @@
 // IIFE to avoid scope conflicts
 (function () {
+  // ============ Constants ============
+  const DEFAULT_SERVER_URL = "wss://unscrutinizing-unspiritually-jaylen.ngrok-free.dev";
+
   // ============ Types ============
   type RtcConnectionState = "disconnected" | "connecting" | "connected" | "failed";
 
   interface HistoryItem {
     id: string;
-    type: "text" | "image" | "file";
+    mime: string;
+    contentHash: string;
     preview: string;
-    size: number;
-    sourceDeviceId: string;
-    createdAt: number;
+    sizeBytes: number;
+    firstSeen: number;
+    lastSeen: number;
+    source: "local" | "remote";
+    originDeviceId: string;
+    contentText: string;
   }
 
   interface Identity {
@@ -24,6 +31,7 @@
     getIdentity: () => Promise<Identity>;
     getHistory: () => Promise<HistoryItem[]>;
     getHistoryItem: (id: string) => Promise<HistoryItem | null>;
+    deleteHistoryItem: (id: string) => Promise<{ success: boolean }>;
     onHistoryUpdated: (callback: () => void) => () => void;
     connect: (config: { serverUrl: string; deviceId: string }) => Promise<{ success: boolean }>;
     disconnect: () => Promise<{ success: boolean }>;
@@ -269,6 +277,8 @@
   }
 
   // ============ History ============
+  let expandedHistoryId: string | null = null;
+
   async function loadHistory(): Promise<void> {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
@@ -287,32 +297,74 @@
         return;
       }
 
-      historyList.innerHTML = items.map((item) => `
-        <div class="history-item" data-id="${item.id}">
-          <div class="history-type-icon">${item.type === "text" ? "📝" : item.type === "image" ? "🖼️" : "📁"}</div>
+      historyList.innerHTML = items.map((item) => {
+        const isExpanded = expandedHistoryId === item.id;
+        const typeIcon = item.mime.startsWith("image/") ? "🖼️" : item.mime === "application/octet-stream" ? "📁" : "📝";
+        const typeLabel = item.mime.startsWith("image/") ? "image" : item.mime === "application/octet-stream" ? "file" : "text";
+
+        return `
+        <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${item.id}">
+          <div class="history-type-icon">${typeIcon}</div>
           <div class="history-content">
             <div class="history-preview">${escapeHtml(item.preview || "").slice(0, 100)}</div>
-            <div class="history-meta">${formatTime(item.createdAt)} · ${item.type} · ${formatBytes(item.size)}</div>
+            <div class="history-full-content">${escapeHtml(item.contentText || item.preview || "")}</div>
+            <div class="history-meta">${formatTime(item.lastSeen)} · ${typeLabel} · ${formatBytes(item.sizeBytes)}</div>
           </div>
-          <div class="history-actions">
+          <div class="history-actions" onclick="event.stopPropagation()">
             <button class="small secondary copy-btn" data-id="${item.id}">Copy</button>
+            <button class="small danger delete-btn" data-id="${item.id}">🗑️</button>
           </div>
         </div>
-      `).join("");
+      `}).join("");
+
+      // Add click handlers for expand/collapse
+      historyList.querySelectorAll(".history-item").forEach((itemEl) => {
+        itemEl.addEventListener("click", (e) => {
+          const target = e.target as HTMLElement;
+          // Don't toggle if clicking on a button
+          if (target.closest(".history-actions")) return;
+
+          const id = (itemEl as HTMLElement).getAttribute("data-id");
+          if (id === expandedHistoryId) {
+            expandedHistoryId = null;
+            itemEl.classList.remove("expanded");
+          } else {
+            // Collapse any previously expanded item
+            historyList.querySelectorAll(".history-item.expanded").forEach((el) => {
+              el.classList.remove("expanded");
+            });
+            expandedHistoryId = id;
+            itemEl.classList.add("expanded");
+          }
+        });
+      });
 
       // Add copy button handlers
       historyList.querySelectorAll(".copy-btn").forEach((btn) => {
         btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
           const id = (e.target as HTMLElement).getAttribute("data-id");
           if (id) {
             const item = await uc.getHistoryItem(id);
-            if (item && item.preview) {
-              await navigator.clipboard.writeText(item.preview);
+            if (item && (item.contentText || item.preview)) {
+              await navigator.clipboard.writeText(item.contentText || item.preview);
               (e.target as HTMLButtonElement).textContent = "Copied!";
               setTimeout(() => {
                 (e.target as HTMLButtonElement).textContent = "Copy";
               }, 1500);
             }
+          }
+        });
+      });
+
+      // Add delete button handlers
+      historyList.querySelectorAll(".delete-btn").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = (e.target as HTMLElement).getAttribute("data-id");
+          if (id) {
+            await uc.deleteHistoryItem(id);
+            // History will refresh automatically via onHistoryUpdated
           }
         });
       });
@@ -379,8 +431,35 @@
             </div>
           </div>
         </div>
+        <div class="device-actions">
+          <button class="small danger unpair-btn" data-peer-id="${currentPeerId}">Unpair</button>
+        </div>
       </div>
     `;
+
+    // Add unpair button handler
+    const unpairBtn = deviceList.querySelector(".unpair-btn");
+    if (unpairBtn) {
+      unpairBtn.addEventListener("click", async () => {
+        const confirmed = confirm("Are you sure you want to unpair this device? You will need to pair again to sync clipboards.");
+        if (confirmed) {
+          unpairDevice();
+        }
+      });
+    }
+  }
+
+  function unpairDevice(): void {
+    // Close WebRTC connection if exists
+    if (webrtc) {
+      webrtc = null;
+    }
+    currentPeerId = null;
+    updateWebRtcStatus("disconnected");
+    updateDeviceList();
+
+    // Navigate to pairing page so user can pair again
+    navigateToPage("pairing");
   }
 
   // ============ Pairing ============
@@ -480,6 +559,9 @@
     const connectBtn = document.getElementById("connectBtn");
     const serverUrlInput = document.getElementById("serverUrlInput") as HTMLInputElement;
     if (connectBtn && serverUrlInput) {
+      // Set default ngrok URL
+      serverUrlInput.value = DEFAULT_SERVER_URL;
+
       connectBtn.addEventListener("click", async () => {
         if (wsStatus === "connected") {
           await uc.disconnect();
@@ -599,7 +681,7 @@
     if (resetNgrokBtn && ngrokUrlInput) {
       resetNgrokBtn.addEventListener("click", () => {
         ngrokUrlInput.value = "";
-        if (serverUrlInput) serverUrlInput.value = "ws://127.0.0.1:8787";
+        if (serverUrlInput) serverUrlInput.value = DEFAULT_SERVER_URL;
         alert("Reset to default");
       });
     }
