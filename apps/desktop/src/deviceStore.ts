@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import sqlite3 from "sqlite3";
 
 export type DeviceRecord = {
     deviceId: string;
@@ -7,97 +8,159 @@ export type DeviceRecord = {
     platform: string;
     lastSeen: number;
     publicKey?: string;
-    status?: string; // Add status tracking
-    ignored?: boolean; // Add ignore flag
+    status?: string;
 };
 
-const DEVICES_FILE = "devices.json";
+// Legacy file for migration
+const DEVICES_JSON_FILE = "devices.json";
+const DB_FILE_NAME = "devices.sqlite";
 
 export class DeviceStore {
-    private devices: Map<string, DeviceRecord> = new Map();
-    private filePath: string;
+    private db: sqlite3.Database;
+    private legacyPath: string;
 
     constructor(userDataDir: string) {
-        this.filePath = path.join(userDataDir, DEVICES_FILE);
-        console.log("[Main] DeviceStore initialized at:", this.filePath);
-        this.load();
+        const dbPath = path.join(userDataDir, DB_FILE_NAME);
+        this.legacyPath = path.join(userDataDir, DEVICES_JSON_FILE);
+        console.log("[Main] DeviceStore (SQLite) initialized at:", dbPath);
+
+        this.db = new sqlite3.Database(dbPath);
+        this.init();
     }
 
-    private load() {
-        if (fs.existsSync(this.filePath)) {
-            try {
-                const raw = fs.readFileSync(this.filePath, "utf8");
-                const list = JSON.parse(raw) as DeviceRecord[];
-                list.forEach((d) => this.devices.set(d.deviceId, d));
-                console.log(`[Main] Loaded ${list.length} devices`);
-            } catch (err) {
-                console.error("[Main] Failed to load devices.json:", err);
-            }
-        } else {
-            console.log("[Main] No devices.json found, starting empty");
-        }
-    }
+    private init() {
+        this.db.serialize(() => {
+            this.db.run(`
+                CREATE TABLE IF NOT EXISTS devices (
+                    deviceId TEXT PRIMARY KEY,
+                    deviceName TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    lastSeen INTEGER NOT NULL,
+                    publicKey TEXT,
+                    status TEXT
+                )
+            `);
 
-    private save() {
-        try {
-            const list = Array.from(this.devices.values());
-            fs.writeFileSync(this.filePath, JSON.stringify(list, null, 2));
-            console.log(`[Main] Saved ${list.length} devices to disk`);
-        } catch (err) {
-            console.error("[Main] Failed to save devices.json:", err);
-        }
-    }
-
-    upsert(device: DeviceRecord) {
-        this.devices.set(device.deviceId, device);
-        this.save();
-    }
-
-    remove(deviceId: string) {
-        console.log("[Main] Ignoring device:", deviceId);
-        const device = this.devices.get(deviceId);
-        if (device) {
-            device.ignored = true;
-            this.save();
-        }
-    }
-
-    get(deviceId: string): DeviceRecord | undefined {
-        const d = this.devices.get(deviceId);
-        return d?.ignored ? undefined : d;
-    }
-
-    getAll(): DeviceRecord[] {
-        return Array.from(this.devices.values()).filter(d => !d.ignored);
-    }
-
-    upsertMany(devices: Partial<DeviceRecord>[]) {
-        let changed = false;
-        devices.forEach((d) => {
-            if (!d.deviceId) return;
-            const existing = this.devices.get(d.deviceId);
-
-            // If it's a new device, add it (unless we want to block new unknown ones? no)
-            if (!existing) {
-                this.devices.set(d.deviceId, d as DeviceRecord);
-                changed = true;
-                return;
-            }
-
-            // Update existing
-            if (existing.lastSeen < (d.lastSeen || 0) || existing.deviceName !== d.deviceName || existing.status !== d.status) {
-                // If it was ignored but is now ONLINE, un-ignore it?
-                // For now, let's keep it ignored unless user re-adds (not possible via UI yet).
-                // Or maybe un-ignore if status is 'online'?
-                // Discussed plan: If it comes back online, we might want to see it.
-                // But for "offline queue", we don't want zombies.
-                // Zombies are "offline".
-
-                // Merge updates
-                Object.assign(existing, d);
-                changed = true;
-            }
+            // Attempt migration
+            this.migrateFromJSON();
         });
-        if (changed) this.save();
+    }
+
+    private migrateFromJSON() {
+        if (fs.existsSync(this.legacyPath)) {
+            try {
+                console.log("[Main] Migrating devices.json to SQLite...");
+                const raw = fs.readFileSync(this.legacyPath, "utf8");
+                const list = JSON.parse(raw) as DeviceRecord[];
+
+                const stmt = this.db.prepare("INSERT OR REPLACE INTO devices (deviceId, deviceName, platform, lastSeen, publicKey, status) VALUES (?, ?, ?, ?, ?, ?)");
+                list.forEach(d => {
+                    // Filter out ignored if they were persisted? User wants clean start so maybe just import all.
+                    // The JSON usually didn't have 'ignored' unless from my last edit. 
+                    // If it has 'ignored', we skip it.
+                    if ((d as any).ignored) return;
+
+                    stmt.run(d.deviceId, d.deviceName, d.platform, d.lastSeen, d.publicKey, d.status || "offline");
+                });
+                stmt.finalize();
+
+                console.log(`[Main] Migrated ${list.length} devices.`);
+                // Rename legacy file to avoid re-migration
+                fs.renameSync(this.legacyPath, this.legacyPath + ".bak");
+            } catch (err) {
+                console.error("[Main] Migration failed:", err);
+            }
+        }
+    }
+
+    async upsert(device: DeviceRecord): Promise<void> {
+        return this.run(
+            "INSERT OR REPLACE INTO devices (deviceId, deviceName, platform, lastSeen, publicKey, status) VALUES (?, ?, ?, ?, ?, ?)",
+            [device.deviceId, device.deviceName, device.platform, device.lastSeen, device.publicKey, device.status]
+        );
+    }
+
+    async remove(deviceId: string): Promise<void> {
+        console.log("[Main] Deleting device from DB:", deviceId);
+        await this.run("DELETE FROM devices WHERE deviceId = ?", [deviceId]);
+    }
+
+    async get(deviceId: string): Promise<DeviceRecord | undefined> {
+        return this.getOne<DeviceRecord>("SELECT * FROM devices WHERE deviceId = ?", [deviceId]);
+    }
+
+    async getAll(): Promise<DeviceRecord[]> {
+        return this.all<DeviceRecord>("SELECT * FROM devices ORDER BY lastSeen DESC");
+    }
+
+    async upsertMany(devices: Partial<DeviceRecord>[]) {
+        // Transaction for performance
+        this.db.serialize(() => {
+            this.db.run("BEGIN TRANSACTION");
+            const stmt = this.db.prepare(`
+                INSERT INTO devices (deviceId, deviceName, platform, lastSeen, publicKey, status) 
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(deviceId) DO UPDATE SET
+                    lastSeen = excluded.lastSeen,
+                    deviceName = excluded.deviceName,
+                    status = excluded.status
+            `);
+
+            devices.forEach(d => {
+                if (!d.deviceId) return;
+                // We need to fetch existing if partial? "ON CONFLICT UPDATE" handles updates.
+                // But we need to ensure all fields are present for INSERT.
+                // Since this is upsertMany from Server, it might be partial.
+                // We should check if it exists first?
+                // Actually, the server usually sends FULL records for "hello" or "list".
+                // But if it sends partial, SQLite NOT NULL constraints will fail on INSERT.
+                // However, the protocol schema ensures deviceId, deviceName, platform are present in 'DeviceInfo'.
+                // So it should be fine.
+
+                if (d.deviceName && d.platform) {
+                    stmt.run(d.deviceId, d.deviceName, d.platform, d.lastSeen || Date.now(), d.publicKey, d.status || "online");
+                } else {
+                    // It's a partial update? e.g. status only?
+                    // We can run a specific UPDATE.
+                    if (d.status) {
+                        this.db.run("UPDATE devices SET status = ? WHERE deviceId = ?", [d.status, d.deviceId]);
+                    }
+                }
+            });
+
+            stmt.finalize();
+            this.db.run("COMMIT");
+        });
+    }
+
+    async setOffline(exceptDeviceIds: string[] = []) {
+        // Set all non-active devices to offline?
+        // Actually, since server sends full list of ACTIVE devices, we can mark everyone else as offline.
+        // Assuming upsertMany updates the active ones.
+        if (exceptDeviceIds.length === 0) {
+            await this.run("UPDATE devices SET status = 'offline'");
+        } else {
+            const placeholders = exceptDeviceIds.map(() => "?").join(",");
+            await this.run(`UPDATE devices SET status = 'offline' WHERE deviceId NOT IN (${placeholders})`, exceptDeviceIds);
+        }
+    }
+
+    // Helper wrappers
+    private run(sql: string, params: unknown[] = []) {
+        return new Promise<void>((resolve, reject) => {
+            this.db.run(sql, params, (err) => (err ? reject(err) : resolve()));
+        });
+    }
+
+    private getOne<T>(sql: string, params: unknown[] = []) {
+        return new Promise<T | undefined>((resolve, reject) => {
+            this.db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row as T)));
+        });
+    }
+
+    private all<T>(sql: string, params: unknown[] = []) {
+        return new Promise<T[]>((resolve, reject) => {
+            this.db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows as T[])));
+        });
     }
 }

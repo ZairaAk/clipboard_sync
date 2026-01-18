@@ -71,8 +71,12 @@ export function initializeIpcHandlers(window: BrowserWindow, deviceStore: Device
             currentPairCode = null;
           }
         },
-        onDevicesUpdate: (msg: DevicesUpdateMessage) => {
-          deviceStore.upsertMany(msg.devices);
+        onDevicesUpdate: async (msg: DevicesUpdateMessage) => {
+          await deviceStore.upsertMany(msg.devices);
+          // Mark devices not in the payload as offline (since server is now stateless)
+          const onlineIds = msg.devices.map(d => d.deviceId);
+          await deviceStore.setOffline(onlineIds);
+
           sendToRenderer("uc:devicesUpdate", msg);
         },
         onPairCreated: (msg: PairCreatedMessage) => {

@@ -252,9 +252,10 @@ function handleClose(socket: WebSocket) {
 
   clientBySocket.delete(socket);
   signalRateBySocket.delete(socket);
-  recordPresence(client.deviceId, { status: "offline", lastSeen: Date.now() });
+  // Remove from presence entirely (Stateless)
+  presenceByDeviceId.delete(client.deviceId);
 
-  // Notify all clients when a device goes offline.
+  // Notify all clients that a device has left (or just send full list)
   broadcastDevicesUpdate();
 }
 
