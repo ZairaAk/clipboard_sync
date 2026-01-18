@@ -50,6 +50,7 @@ app.whenReady().then(() => {
   clipboardSync.start();
 
   ipcMain.handle("history:list", () => historyStore.list());
+  ipcMain.handle("history:search", (_event, query: string) => historyStore.search(query));
   ipcMain.handle("history:get", (_event, id: string) => historyStore.getById(id));
   ipcMain.handle("history:getBlob", async (_event, id: string) => {
     const blob = await historyStore.getBlob(id);

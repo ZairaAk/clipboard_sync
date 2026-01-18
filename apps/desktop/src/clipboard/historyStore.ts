@@ -18,6 +18,7 @@ export type HistoryItem = {
   contentText: string;
   contentBlob: Buffer | null;
   thumbnailBlob: Buffer | null;
+  filename: string | null;
 };
 
 // Thumbnail max dimension (100x100)
@@ -62,11 +63,17 @@ export class HistoryStore {
       // Migration: Add BLOB columns for image storage
       this.db.run(
         "ALTER TABLE history_items ADD COLUMN contentBlob BLOB;",
-        () => {}, // Ignore error if column exists
+        () => { }, // Ignore error if column exists
       );
       this.db.run(
         "ALTER TABLE history_items ADD COLUMN thumbnailBlob BLOB;",
-        () => {}, // Ignore error if column exists
+        () => { }, // Ignore error if column exists
+      );
+
+      // Migration: Add filename column for file storage
+      this.db.run(
+        "ALTER TABLE history_items ADD COLUMN filename TEXT;",
+        () => { }, // Ignore error if column exists
       );
     });
   }
@@ -92,7 +99,7 @@ export class HistoryStore {
       );
 
       await this.enforceMaxItems();
-      return { ...existing, lastSeen: now, preview, sizeBytes, source: params.source, originDeviceId: params.originDeviceId, contentText: params.text, contentBlob: null, thumbnailBlob: null };
+      return { ...existing, lastSeen: now, preview, sizeBytes, source: params.source, originDeviceId: params.originDeviceId, contentText: params.text, contentBlob: null, thumbnailBlob: null, filename: null };
     }
 
     const id = crypto.randomUUID();
@@ -109,6 +116,7 @@ export class HistoryStore {
       contentText: params.text,
       contentBlob: null,
       thumbnailBlob: null,
+      filename: null,
     };
 
     await this.run(
@@ -155,7 +163,7 @@ export class HistoryStore {
              contentBlob = ?, thumbnailBlob = ?
          WHERE id = ?`,
         [now, preview, sizeBytes, params.source, params.originDeviceId,
-         params.buffer, thumbnail, existing.id],
+          params.buffer, thumbnail, existing.id],
       );
 
       await this.enforceMaxItems();
@@ -168,6 +176,7 @@ export class HistoryStore {
         originDeviceId: params.originDeviceId,
         contentBlob: params.buffer,
         thumbnailBlob: thumbnail,
+        filename: null,
       };
     }
 
@@ -185,6 +194,7 @@ export class HistoryStore {
       contentText: "",
       contentBlob: params.buffer,
       thumbnailBlob: thumbnail,
+      filename: null,
     };
 
     await this.run(
@@ -225,6 +235,18 @@ export class HistoryStore {
        ORDER BY lastSeen DESC
        LIMIT ?`,
       [limit],
+    );
+    return rows;
+  }
+
+  async search(query: string, limit = HISTORY_MAX_ITEMS): Promise<HistoryItem[]> {
+    const likeQuery = `%${query}%`;
+    const rows = await this.all<HistoryItem>(
+      `SELECT * FROM history_items
+       WHERE contentText LIKE ? OR preview LIKE ?
+       ORDER BY lastSeen DESC
+       LIMIT ?`,
+      [likeQuery, likeQuery, limit],
     );
     return rows;
   }

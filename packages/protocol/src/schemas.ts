@@ -125,6 +125,28 @@ export const ClipChunkMessageSchema = z.object({
   data: Base64Schema,
 });
 
+// Metadata message sent before file chunks
+export const ClipFileStartMessageSchema = z.object({
+  type: z.literal("clip_file_start"),
+  eventId: z.string().uuid(),
+  originDeviceId: DeviceIdSchema,
+  timestampMs: z.number().int().nonnegative(),
+  mime: z.string().min(1),
+  filename: z.string().min(1),
+  totalBytes: z.number().int().positive(),
+  totalChunks: z.number().int().positive(),
+});
+
+// Individual chunk message for file transfer
+export const ClipFileChunkMessageSchema = z.object({
+  type: z.literal("clip_file_chunk"),
+  eventId: z.string().uuid(),
+  originDeviceId: DeviceIdSchema,
+  chunkIndex: z.number().int().nonnegative(),
+  totalChunks: z.number().int().positive(),
+  data: Base64Schema,
+});
+
 export const ClientToServerMessageSchema = z.union([
   HelloMessageSchema,
   HeartbeatMessageSchema,
@@ -159,5 +181,7 @@ export type ErrorMessage = z.infer<typeof ErrorMessageSchema>;
 export type ClipEventMessage = z.infer<typeof ClipEventMessageSchema>;
 export type ClipStartMessage = z.infer<typeof ClipStartMessageSchema>;
 export type ClipChunkMessage = z.infer<typeof ClipChunkMessageSchema>;
+export type ClipFileStartMessage = z.infer<typeof ClipFileStartMessageSchema>;
+export type ClipFileChunkMessage = z.infer<typeof ClipFileChunkMessageSchema>;
 export type ClientToServerMessage = z.infer<typeof ClientToServerMessageSchema>;
 export type ServerToClientMessage = z.infer<typeof ServerToClientMessageSchema>;

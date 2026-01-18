@@ -48,6 +48,7 @@
     getKnownDevices: () => Promise<DeviceRecord[]>;
     forgetDevice: (deviceId: string) => Promise<{ success: boolean }>;
     getHistory: () => Promise<HistoryItem[]>;
+    searchHistory: (query: string) => Promise<HistoryItem[]>;
     getHistoryItem: (id: string) => Promise<HistoryItem | null>;
     getHistoryItemBlob: (id: string) => Promise<BlobData | null>;
     deleteHistoryItem: (id: string) => Promise<{ success: boolean }>;
@@ -190,9 +191,7 @@
   let currentPeerId: string | null = null;
   let currentPage = "devices";
 
-  // Triple-click detection for ngrok page
-  let versionClickCount = 0;
-  let versionClickTimer: number | null = null;
+
 
   // ============ Utility Functions ============
   function generateDeviceId(): string {
@@ -210,6 +209,14 @@
       localStorage.setItem("deviceId", id);
     }
     return id;
+  }
+
+  function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
+    let timeout: number | undefined;
+    return (...args: Parameters<T>) => {
+      clearTimeout(timeout);
+      timeout = window.setTimeout(() => func(...args), wait);
+    };
   }
 
   // ============ Navigation ============
@@ -333,12 +340,12 @@
   // ============ History ============
   let expandedHistoryId: string | null = null;
 
-  async function loadHistory(): Promise<void> {
+  async function loadHistory(query?: string): Promise<void> {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
 
     try {
-      const items = await uc.getHistory();
+      const items = query ? await uc.searchHistory(query) : await uc.getHistory();
 
       if (!items || items.length === 0) {
         historyList.innerHTML = `
@@ -459,6 +466,7 @@
           }
         });
       });
+
     } catch (err) {
       console.error("[Renderer] Failed to load history:", err);
     }
@@ -719,27 +727,7 @@
       });
     });
 
-    // Version triple-click for ngrok page
-    const versionText = document.getElementById("versionText");
-    if (versionText) {
-      versionText.addEventListener("click", () => {
-        versionClickCount++;
-        if (versionClickTimer) clearTimeout(versionClickTimer);
-        versionClickTimer = window.setTimeout(() => { versionClickCount = 0; }, 500);
-        if (versionClickCount >= 3) {
-          versionClickCount = 0;
-          navigateToPage("ngrok");
-        }
-      });
-    }
 
-    // Keyboard shortcut for ngrok page
-    document.addEventListener("keydown", (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "N") {
-        e.preventDefault();
-        navigateToPage("ngrok");
-      }
-    });
 
     // Add Device button - show inline add device section
     const addDeviceBtn = document.getElementById("addDeviceBtn");
@@ -866,25 +854,32 @@
       toggle.addEventListener("click", () => toggle.classList.toggle("active"));
     });
 
-    // Ngrok buttons
-    const ngrokUrlInput = document.getElementById("ngrokUrlInput") as HTMLInputElement;
-    const testNgrokBtn = document.getElementById("testNgrokBtn");
-    const applyNgrokBtn = document.getElementById("applyNgrokBtn");
-    const resetNgrokBtn = document.getElementById("resetNgrokBtn");
-    const ngrokTestResult = document.getElementById("ngrokTestResult");
+    // Search history
+    const searchHistoryBtn = document.getElementById("searchHistoryBtn");
+    const historySearch = document.getElementById("historySearch") as HTMLInputElement;
 
-    if (applyNgrokBtn && ngrokUrlInput) {
-      applyNgrokBtn.addEventListener("click", async () => {
-        const url = ngrokUrlInput.value.trim();
-        if (!url) {
-          alert("Please enter a URL");
-          return;
-        }
-        await uc.disconnect();
-        await uc.connect({ serverUrl: url, deviceId: deviceId! });
-        alert("Applied and reconnecting...");
+    if (searchHistoryBtn) {
+      searchHistoryBtn.addEventListener("click", () => {
+        const query = historySearch?.value.trim();
+        loadHistory(query || undefined);
       });
     }
+
+    if (historySearch) {
+      const debouncedSearch = debounce(() => {
+        loadHistory(historySearch.value.trim() || undefined);
+      }, 300);
+
+      historySearch.addEventListener("input", debouncedSearch);
+
+      historySearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          loadHistory(historySearch.value.trim() || undefined);
+        }
+      });
+    }
+
+
 
     const saveSettingsBtn = document.getElementById("saveSettingsBtn");
     const settingsDeviceNameInput = document.getElementById("deviceNameInput") as HTMLInputElement;
@@ -904,12 +899,7 @@
       });
     }
 
-    if (resetNgrokBtn && ngrokUrlInput) {
-      resetNgrokBtn.addEventListener("click", () => {
-        ngrokUrlInput.value = "";
-        alert("Reset to default logic (uses hardcoded URL if not overridden)");
-      });
-    }
+
 
     // ============ IPC Event Listeners ============
     uc.onWsStatus(updateStatusUI);

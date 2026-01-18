@@ -954,57 +954,12 @@
         </div>
       </div>
 
-      <div class="card">
-        <div class="settings-section">
-          <h3>Signaling Server</h3>
-          <div class="input-group">
-            <label>Server URL</label>
-            <input type="text" id="settingsServerUrl"
-              placeholder="wss://unscrutinizing-unspiritually-jaylen.ngrok-free.dev" />
-          </div>
-        </div>
-      </div>
+
 
       <button id="saveSettingsBtn">Save Settings</button>
     </div>
 
-    <!-- Page 5: Ngrok (Hidden) -->
-    <div id="page-ngrok" class="page">
-      <div class="page-header">
-        <h2>Ngrok Configuration</h2>
-      </div>
 
-      <div class="card">
-        <div class="settings-section">
-          <h3>Custom Signaling URL</h3>
-          <p class="muted">Use an ngrok URL to connect devices across different networks.</p>
-          <div class="input-group">
-            <label>Ngrok WebSocket URL</label>
-            <input type="text" id="ngrokUrlInput" placeholder="wss://xxxx-xxx-xxx-xxx.ngrok-free.app" />
-          </div>
-          <div class="flex-row">
-            <button id="testNgrokBtn" class="secondary">Test Connection</button>
-            <button id="applyNgrokBtn">Apply & Reconnect</button>
-            <button id="resetNgrokBtn" class="secondary">Reset to Default</button>
-          </div>
-          <div id="ngrokTestResult" class="url-test-result hidden"></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="settings-section">
-          <h3>Instructions</h3>
-          <ol class="muted" style="padding-left: 20px; line-height: 1.8;">
-            <li>Install ngrok: <code>npm install -g ngrok</code></li>
-            <li>Run your signaling server locally</li>
-            <li>Start ngrok: <code>ngrok http 8787</code></li>
-            <li>Copy the <code>wss://</code> URL (replace https with wss)</li>
-            <li>Paste it above and click "Apply & Reconnect"</li>
-            <li>Use the same URL on both devices</li>
-          </ol>
-        </div>
-      </div>
-    </div>
   </main>
 
   <script src="renderer.js"></script>

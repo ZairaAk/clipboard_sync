@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("uc", {
 
   // History
   getHistory: () => ipcRenderer.invoke("history:list"),
+  searchHistory: (query: string) => ipcRenderer.invoke("history:search", query),
   getHistoryItem: (id: string) => ipcRenderer.invoke("history:get", id),
   getHistoryItemBlob: (id: string) => ipcRenderer.invoke("history:getBlob", id),
   deleteHistoryItem: (id: string) => ipcRenderer.invoke("history:delete", id),
