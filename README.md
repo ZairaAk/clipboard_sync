@@ -15,31 +15,6 @@ Universal Clipboard Sync is a privacy-focused, cross-platform application that a
 
 The application uses a hybrid communication model that combines a WebSocket server for signaling with direct WebRTC connections for data transfer.
 
-```mermaid
-graph TD
-    subgraph Device A
-        ClientA[Desktop App]
-    end
-    subgraph Device B
-        ClientB[Desktop App]
-    end
-
-    WSS[WebSocket Signaling Server]
-
-    ClientA -- 1. WebSocket Connection --> WSS
-    ClientB -- 1. WebSocket Connection --> WSS
-
-    WSS -- 2. Signaling --> ClientA
-    WSS -- 2. Signaling --> ClientB
-
-    ClientA <--> ClientB
-
-
-    subgraph Legend
-      -->: WebSocket (Signaling)
-      <-->: WebRTC Data Channel (Clipboard Data)
-    end
-```
 
 1.  **Device Registration:** Each desktop client connects to the WebSocket server and is assigned a unique ID.
 2.  **Device Pairing:** Users pair devices using a one-time code.
